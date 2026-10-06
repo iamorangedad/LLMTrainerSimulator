@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>训练模拟台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2">
+  <link rel="stylesheet" href="/static/styles.css?v=4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -138,6 +138,7 @@
         <button id="stopBtn" type="button" disabled>停止</button>
       </div>
     </form>
+    <div class="splitter splitter-col" data-resize="config" role="separator" aria-orientation="vertical" aria-label="调整配置区宽度" tabindex="0"></div>
 
     <section class="panel stage">
       <div class="stage-head">
@@ -169,6 +170,7 @@
       <div id="timeBar" class="bar"></div>
       <p id="timeText" class="meter-text"></p>
     </section>
+    <div class="splitter splitter-col" data-resize="side" role="separator" aria-orientation="vertical" aria-label="调整指标区宽度" tabindex="0"></div>
 
     <aside class="panel side">
       <p class="estimate-tag">教学估算，不是跑分</p>
@@ -189,6 +191,7 @@
       </details>
     </aside>
   </main>
+  <div class="splitter splitter-row" data-resize="log" role="separator" aria-orientation="horizontal" aria-label="调整日志区高度" tabindex="0"></div>
 
   <section class="log-wrap" aria-label="模拟日志">
     <div class="log-head">
@@ -198,6 +201,6 @@
     <div id="log" class="log" role="log"></div>
   </section>
 
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>
