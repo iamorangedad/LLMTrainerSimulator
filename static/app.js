@@ -42,7 +42,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (preset) applyPreset(preset);
   });
   $("stopBtn").addEventListener("click", stop);
-  window.addEventListener("resize", () => drawChart(losses));
+  installSplitters();
+  window.addEventListener("resize", () => {
+    clampPanes();
+    drawChart(losses);
+  });
   setPlaceholder();
   try {
     const response = await fetch("/api/catalog");
@@ -615,4 +619,162 @@ function drawChart(points) {
 function cssEscape(value) {
   if (window.CSS && CSS.escape) return CSS.escape(value);
   return String(value).replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+const PANE_MIN = { config: 200, side: 200, stage: 240, log: 96, workspace: 140 };
+const STACK_MIN = 180;
+const STACK_MAX = 1600;
+const narrowQuery = window.matchMedia("(max-width: 1100px)");
+
+function installSplitters() {
+  for (const handle of document.querySelectorAll(".splitter")) {
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      beginPaneDrag(handle, event);
+    });
+    handle.addEventListener("keydown", (event) => {
+      const step = event.shiftKey ? 48 : 16;
+      const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      nudgePane(handle.dataset.resize, delta[0], delta[1]);
+    });
+  }
+  narrowQuery.addEventListener("change", syncSplitterAxes);
+  syncSplitterAxes();
+  clampPanes();
+}
+
+function syncSplitterAxes() {
+  const stacked = narrowQuery.matches;
+  for (const handle of document.querySelectorAll(".splitter-col")) {
+    handle.setAttribute("aria-orientation", stacked ? "horizontal" : "vertical");
+    handle.setAttribute("aria-label", stacked
+      ? (handle.dataset.resize === "config" ? "调整配置区高度" : "调整集群区和指标区高度")
+      : (handle.dataset.resize === "config" ? "调整配置区宽度" : "调整指标区宽度"));
+  }
+}
+
+function beginPaneDrag(handle, event) {
+  const kind = handle.dataset.resize;
+  const originX = event.clientX;
+  const originY = event.clientY;
+  const start = {
+    config: readPx("--config-w"),
+    side: readPx("--side-w"),
+    log: readPx("--log-h"),
+    configH: readPx("--config-h"),
+    stageH: readPx("--stage-h"),
+    sideH: readPx("--side-h"),
+  };
+  handle.classList.add("is-dragging");
+  document.body.classList.add("is-resizing");
+  document.body.style.setProperty("--resize-cursor", narrowQuery.matches || kind === "log" ? "row-resize" : "col-resize");
+  if (handle.setPointerCapture) {
+    try { handle.setPointerCapture(event.pointerId); } catch (err) { /* 指针尚未按下时忽略 */ }
+  }
+
+  const move = (ev) => {
+    applyPaneDelta(kind, ev.clientX - originX, ev.clientY - originY, start);
+  };
+  const end = () => {
+    handle.classList.remove("is-dragging");
+    document.body.classList.remove("is-resizing");
+    document.body.style.removeProperty("--resize-cursor");
+    handle.removeEventListener("pointermove", move);
+    handle.removeEventListener("pointerup", end);
+    handle.removeEventListener("pointercancel", end);
+    drawChart(losses);
+  };
+  handle.addEventListener("pointermove", move);
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+}
+
+function nudgePane(kind, dx, dy) {
+  const start = {
+    config: readPx("--config-w"),
+    side: readPx("--side-w"),
+    log: readPx("--log-h"),
+    configH: readPx("--config-h"),
+    stageH: readPx("--stage-h"),
+    sideH: readPx("--side-h"),
+  };
+  applyPaneDelta(kind, dx, dy, start);
+  drawChart(losses);
+}
+
+function applyPaneDelta(kind, dx, dy, start) {
+  if (narrowQuery.matches) {
+    if (kind === "config") setPx("--config-h", clamp(start.configH + dy, STACK_MIN, STACK_MAX));
+    else if (kind === "side") tradeStackedHeight(start.stageH, start.sideH, dy);
+    else setPx("--log-h", clamp(start.log - dy, PANE_MIN.log, STACK_MAX));
+    return;
+  }
+  const room = paneRoom();
+  if (kind === "config") setPx("--config-w", clamp(start.config + dx, PANE_MIN.config, room.maxConfig));
+  else if (kind === "side") setPx("--side-w", clamp(start.side - dx, PANE_MIN.side, room.maxSide));
+  else setPx("--log-h", clamp(start.log - dy, PANE_MIN.log, room.maxLog));
+}
+
+function tradeStackedHeight(stageStart, sideStart, dy) {
+  let delta = dy;
+  let side = sideStart - delta;
+  if (side < STACK_MIN) {
+    side = STACK_MIN;
+    delta = sideStart - side;
+  } else if (side > STACK_MAX) {
+    side = STACK_MAX;
+    delta = sideStart - side;
+  }
+  let stage = stageStart + delta;
+  if (stage < STACK_MIN) {
+    stage = STACK_MIN;
+    side = clamp(sideStart - (stage - stageStart), STACK_MIN, STACK_MAX);
+  } else if (stage > STACK_MAX) {
+    stage = STACK_MAX;
+    side = clamp(sideStart - (stage - stageStart), STACK_MIN, STACK_MAX);
+  }
+  setPx("--stage-h", stage);
+  setPx("--side-h", side);
+}
+
+function clampPanes() {
+  if (narrowQuery.matches) return;
+  const width = document.querySelector(".workspace").clientWidth;
+  const split = readPx("--split");
+  const maxSide = Math.max(PANE_MIN.side, width - PANE_MIN.config - PANE_MIN.stage - split * 2);
+  const side = clamp(readPx("--side-w"), PANE_MIN.side, maxSide);
+  setPx("--side-w", side);
+  const maxConfig = Math.max(PANE_MIN.config, width - side - PANE_MIN.stage - split * 2);
+  setPx("--config-w", clamp(readPx("--config-w"), PANE_MIN.config, maxConfig));
+  setPx("--log-h", clamp(readPx("--log-h"), PANE_MIN.log, paneRoom().maxLog));
+}
+
+function paneRoom() {
+  const workspace = document.querySelector(".workspace");
+  const split = readPx("--split");
+  const width = workspace.clientWidth;
+  const config = readPx("--config-w");
+  const side = readPx("--side-w");
+  const header = document.querySelector(".top").offsetHeight;
+  return {
+    maxConfig: Math.max(PANE_MIN.config, width - side - PANE_MIN.stage - split * 2),
+    maxSide: Math.max(PANE_MIN.side, width - config - PANE_MIN.stage - split * 2),
+    maxLog: Math.max(PANE_MIN.log, document.documentElement.clientHeight - header - split - PANE_MIN.workspace),
+  };
+}
+
+function readPx(name) {
+  const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(value) ? value : 0;
+}
+
+function setPx(name, value) {
+  document.documentElement.style.setProperty(name, Math.round(value) + "px");
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
