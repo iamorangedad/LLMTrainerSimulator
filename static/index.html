@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>训练模拟台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=4">
+  <link rel="stylesheet" href="/static/styles.css?v=5">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,11 +12,15 @@
 <body>
   <header class="top">
     <div>
-      <p class="eyebrow">教学估算 · 不占用 GPU</p>
-      <h1>训练模拟台</h1>
-      <p class="lede">配置集群和框架，看显存、通信和一步训练分别花在哪里。</p>
+      <p class="eyebrow" data-i18n="eyebrow">教学估算 · 不占用 GPU</p>
+      <h1 data-i18n="title">训练模拟台</h1>
+      <p class="lede" data-i18n="lede">配置集群和框架，看显存、通信和一步训练分别花在哪里。</p>
     </div>
     <div class="top-status">
+      <div class="lang-switch" role="group" data-i18n-aria="langGroup" aria-label="语言">
+        <button type="button" id="langZh" class="lang-btn" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" id="langEn" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+      </div>
       <span id="statusPill" class="pill" data-status="ready">就绪</span>
       <span id="stepLabel" class="step-label">尚未开始</span>
     </div>
@@ -25,102 +29,102 @@
   <main class="workspace">
     <form id="configForm" class="panel config" autocomplete="off" novalidate>
       <label class="field">
-        <span>预设</span>
+        <span data-i18n="preset">预设</span>
         <select id="preset"></select>
       </label>
       <p id="presetSummary" class="hint"></p>
 
-      <h2>集群</h2>
+      <h2 data-i18n="hCluster">集群</h2>
       <div class="grid-2">
         <label class="field">
-          <span>节点数</span>
+          <span data-i18n="nodes">节点数</span>
           <input id="nodes" type="number" min="1" max="32" value="1">
         </label>
         <label class="field">
-          <span>每节点 GPU</span>
+          <span data-i18n="gpusPerNode">每节点 GPU</span>
           <input id="gpusPerNode" type="number" min="1" max="8" value="1">
         </label>
       </div>
       <label class="field">
-        <span>GPU</span>
+        <span data-i18n="gpu">GPU</span>
         <select id="gpu"></select>
       </label>
       <label class="field">
-        <span>节点间网络</span>
+        <span data-i18n="interconnect">节点间网络</span>
         <select id="interconnect"></select>
       </label>
 
-      <h2>框架</h2>
+      <h2 data-i18n="hFramework">框架</h2>
       <label class="field">
-        <span>训练框架</span>
+        <span data-i18n="framework">训练框架</span>
         <select id="framework"></select>
       </label>
       <p id="frameworkBlurb" class="hint"></p>
       <label class="field" id="zeroRow" hidden>
-        <span>ZeRO 阶段</span>
+        <span data-i18n="zero">ZeRO 阶段</span>
         <select id="zeroStage">
-          <option value="1">ZeRO-1 切分优化器状态</option>
-          <option value="2">ZeRO-2 再切分梯度</option>
-          <option value="3">ZeRO-3 再切分参数</option>
+          <option value="1" data-i18n="zero1">ZeRO-1 切分优化器状态</option>
+          <option value="2" data-i18n="zero2">ZeRO-2 再切分梯度</option>
+          <option value="3" data-i18n="zero3">ZeRO-3 再切分参数</option>
         </select>
       </label>
       <div class="grid-2" id="parallelRow" hidden>
         <label class="field">
-          <span>张量并行</span>
+          <span data-i18n="tp">张量并行</span>
           <input id="tp" type="number" min="1" max="64" value="1">
         </label>
         <label class="field">
-          <span>流水线并行</span>
+          <span data-i18n="pp">流水线并行</span>
           <input id="pp" type="number" min="1" max="64" value="1">
         </label>
       </div>
       <label class="check" id="offloadRow" hidden>
         <input id="cpuOffload" type="checkbox">
-        <span>优化器状态放到 CPU</span>
+        <span data-i18n="offload">优化器状态放到 CPU</span>
       </label>
 
-      <h2>模型与批次</h2>
+      <h2 data-i18n="hModel">模型与批次</h2>
       <label class="field">
-        <span>模型</span>
+        <span data-i18n="model">模型</span>
         <select id="model"></select>
       </label>
       <label class="field">
-        <span>精度</span>
+        <span data-i18n="precision">精度</span>
         <select id="precision"></select>
       </label>
       <div class="grid-2">
         <label class="field">
-          <span>微批次</span>
+          <span data-i18n="micro">微批次</span>
           <input id="microBatch" type="number" min="1" max="32" value="1">
         </label>
         <label class="field">
-          <span>梯度累积</span>
+          <span data-i18n="accum">梯度累积</span>
           <input id="gradAccum" type="number" min="1" max="64" value="1">
         </label>
       </div>
       <div class="grid-2">
         <label class="field">
-          <span>序列长度</span>
+          <span data-i18n="seq">序列长度</span>
           <input id="seqLen" type="number" min="128" max="8192" step="128" value="1024">
         </label>
         <label class="field">
-          <span>学习率</span>
+          <span data-i18n="lr">学习率</span>
           <input id="lr" type="number" min="0.000001" max="1" step="any" value="0.0003">
         </label>
       </div>
       <label class="check">
         <input id="activationCheckpoint" type="checkbox">
-        <span>激活重计算</span>
+        <span data-i18n="activationCkpt">激活重计算</span>
       </label>
 
-      <h2>播放</h2>
+      <h2 data-i18n="hPlay">播放</h2>
       <div class="grid-2">
         <label class="field">
-          <span>步数</span>
+          <span data-i18n="steps">步数</span>
           <input id="steps" type="number" min="1" max="300" value="12">
         </label>
         <label class="field">
-          <span>速度</span>
+          <span data-i18n="speed">速度</span>
           <select id="speed">
             <option value="1">1×</option>
             <option value="2" selected>2×</option>
@@ -134,8 +138,8 @@
       <div id="warnings" class="banner warn" hidden></div>
 
       <div class="actions">
-        <button id="startBtn" type="submit" disabled>开始模拟</button>
-        <button id="stopBtn" type="button" disabled>停止</button>
+        <button id="startBtn" type="submit" data-i18n="start" disabled>开始模拟</button>
+        <button id="stopBtn" type="button" data-i18n="stop" disabled>停止</button>
       </div>
     </form>
     <div class="splitter splitter-col" data-resize="config" role="separator" aria-orientation="vertical" aria-label="调整配置区宽度" tabindex="0"></div>
@@ -152,55 +156,55 @@
         </div>
       </div>
       <div id="cluster" class="cluster"></div>
-      <ul class="legend" aria-label="阶段图例">
-        <li><i data-phase="data"></i>取数</li>
-        <li><i data-phase="forward"></i>前向</li>
-        <li><i data-phase="backward"></i>反向</li>
-        <li><i data-phase="comm"></i>通信</li>
-        <li><i data-phase="optim"></i>优化器</li>
-        <li><i data-phase="checkpoint"></i>检查点</li>
-        <li><i data-phase="fail"></i>失败</li>
+      <ul class="legend" data-i18n-aria="legendLabel" aria-label="阶段图例">
+        <li><i data-phase="data"></i><span data-i18n="phaseData">取数</span></li>
+        <li><i data-phase="forward"></i><span data-i18n="phaseForward">前向</span></li>
+        <li><i data-phase="backward"></i><span data-i18n="phaseBackward">反向</span></li>
+        <li><i data-phase="comm"></i><span data-i18n="phaseComm">通信</span></li>
+        <li><i data-phase="optim"></i><span data-i18n="phaseOptim">优化器</span></li>
+        <li><i data-phase="checkpoint"></i><span data-i18n="phaseCheckpoint">检查点</span></li>
+        <li><i data-phase="fail"></i><span data-i18n="phaseFail">失败</span></li>
       </ul>
 
-      <h3>单卡显存</h3>
+      <h3 data-i18n="memTitle">单卡显存</h3>
       <div id="memBar" class="bar"></div>
       <div id="memText" class="meter-text"></div>
 
-      <h3>一步时间</h3>
+      <h3 data-i18n="timeTitle">一步时间</h3>
       <div id="timeBar" class="bar"></div>
       <p id="timeText" class="meter-text"></p>
     </section>
     <div class="splitter splitter-col" data-resize="side" role="separator" aria-orientation="vertical" aria-label="调整指标区宽度" tabindex="0"></div>
 
     <aside class="panel side">
-      <p class="estimate-tag">教学估算，不是跑分</p>
+      <p class="estimate-tag" data-i18n="estimateTag">教学估算，不是跑分</p>
       <dl class="stats">
-        <div><dt>损失</dt><dd id="loss">—</dd></div>
-        <div><dt>吞吐</dt><dd id="tps">—</dd></div>
-        <div><dt>FLOPs 利用率</dt><dd id="mfu">—</dd></div>
-        <div><dt>步时</dt><dd id="stepTime">—</dd></div>
-        <div><dt>加速比</dt><dd id="speedup">—</dd></div>
+        <div><dt data-i18n="statLoss">损失</dt><dd id="loss">—</dd></div>
+        <div><dt data-i18n="statTps">吞吐</dt><dd id="tps">—</dd></div>
+        <div><dt data-i18n="statMfu">FLOPs 利用率</dt><dd id="mfu">—</dd></div>
+        <div><dt data-i18n="statStep">步时</dt><dd id="stepTime">—</dd></div>
+        <div><dt data-i18n="statSpeedup">加速比</dt><dd id="speedup">—</dd></div>
       </dl>
       <p id="speedupNote" class="hint"></p>
-      <canvas id="lossChart" width="280" height="120" aria-label="教学损失曲线"></canvas>
-      <p class="hint chart-caption">横轴是步，纵轴是损失。曲线用于观察下降和跳动，不对应真实数据集。</p>
+      <canvas id="lossChart" width="280" height="120" data-i18n-aria="chartAria" aria-label="教学损失曲线"></canvas>
+      <p class="hint chart-caption" data-i18n="chartCaption">横轴是步，纵轴是损失。曲线用于观察下降和跳动，不对应真实数据集。</p>
       <div id="notes" class="notes"></div>
       <details class="formulas">
-        <summary>估算说明</summary>
+        <summary data-i18n="formulasSummary">估算说明</summary>
         <div id="formulas"></div>
       </details>
     </aside>
   </main>
   <div class="splitter splitter-row" data-resize="log" role="separator" aria-orientation="horizontal" aria-label="调整日志区高度" tabindex="0"></div>
 
-  <section class="log-wrap" aria-label="模拟日志">
+  <section class="log-wrap" data-i18n-aria="logRegion" aria-label="模拟日志">
     <div class="log-head">
-      <h2>模拟日志</h2>
-      <span>每一行都来自估算模型</span>
+      <h2 data-i18n="logTitle">模拟日志</h2>
+      <span data-i18n="logHint">每一行都来自估算模型</span>
     </div>
     <div id="log" class="log" role="log"></div>
   </section>
 
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/app.js?v=6"></script>
 </body>
 </html>
