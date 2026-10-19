@@ -1,5 +1,13 @@
 """硬件、模型和预设。数值取公开规格的量级，供教学估算，不是厂商基准。"""
 
+from app.i18n import norm_lang
+
+
+def _pick(item: dict, lang: str, field: str = "name") -> str:
+    if lang == "en" and item.get(field + "_en"):
+        return item[field + "_en"]
+    return item[field]
+
 GPUS = {
     "rtx4090": {
         "name": "RTX 4090 24GB",
@@ -48,8 +56,8 @@ GPUS = {
 }
 
 INTERCONNECTS = {
-    "eth_10": {"name": "10GbE 以太网", "gbps": 1.0, "lat_us": 40},
-    "eth_100": {"name": "100GbE 以太网", "gbps": 10.0, "lat_us": 15},
+    "eth_10": {"name": "10GbE 以太网", "name_en": "10GbE Ethernet", "gbps": 1.0, "lat_us": 40},
+    "eth_100": {"name": "100GbE 以太网", "name_en": "100GbE Ethernet", "gbps": 10.0, "lat_us": 15},
     "ib_hdr": {"name": "InfiniBand HDR", "gbps": 20.0, "lat_us": 2.0},
     "ib_ndr": {"name": "InfiniBand NDR", "gbps": 40.0, "lat_us": 1.5},
 }
@@ -65,6 +73,7 @@ MODELS = {
     },
     "d1_5b": {
         "name": "1.5B 级解码器",
+        "name_en": "1.5B-class decoder",
         "params": 1.5e9,
         "layers": 28,
         "hidden": 1536,
@@ -72,6 +81,7 @@ MODELS = {
     },
     "d7b": {
         "name": "7B 级解码器",
+        "name_en": "7B-class decoder",
         "params": 6.7e9,
         "layers": 32,
         "hidden": 4096,
@@ -79,6 +89,7 @@ MODELS = {
     },
     "d13b": {
         "name": "13B 级解码器",
+        "name_en": "13B-class decoder",
         "params": 13e9,
         "layers": 40,
         "hidden": 5120,
@@ -86,6 +97,7 @@ MODELS = {
     },
     "d70b": {
         "name": "70B 级解码器",
+        "name_en": "70B-class decoder",
         "params": 70e9,
         "layers": 80,
         "hidden": 8192,
@@ -97,18 +109,22 @@ FRAMEWORKS = {
     "ddp": {
         "name": "PyTorch DDP",
         "blurb": "每张卡一份完整模型，反向时 AllReduce 同步梯度。",
+        "blurb_en": "Each GPU holds a full model and AllReduces gradients on the backward pass.",
     },
     "fsdp": {
         "name": "PyTorch FSDP",
         "blurb": "参数、梯度和优化器状态按数据并行切分，计算前临时拼回一层。",
+        "blurb_en": "Parameters, gradients, and optimizer state are sharded across data-parallel ranks. One layer is gathered just before it is computed.",
     },
     "deepspeed": {
         "name": "DeepSpeed ZeRO",
         "blurb": "ZeRO-1/2/3 逐级切分优化器状态、梯度和参数。",
+        "blurb_en": "ZeRO-1/2/3 shard optimizer state, then gradients, then parameters.",
     },
     "megatron": {
         "name": "Megatron-LM",
         "blurb": "张量并行、流水线并行和数据并行叠在一起。",
+        "blurb_en": "Tensor, pipeline, and data parallelism are stacked together.",
     },
 }
 
@@ -116,7 +132,9 @@ PRESETS = [
     {
         "id": "single_small",
         "name": "单卡入门",
+        "name_en": "Single-GPU start",
         "summary": "一张 4090 训练 GPT-2，先把单卡上的一步看完整。",
+        "summary_en": "One 4090 trains GPT-2, so a full step on a single GPU is visible.",
         "config": {
             "nodes": 1,
             "gpus_per_node": 1,
@@ -141,7 +159,9 @@ PRESETS = [
     {
         "id": "single_node_dp",
         "name": "单机八卡数据并行",
+        "name_en": "Eight GPUs, data parallel",
         "summary": "8 张 A100 用 DDP 训练 1.5B，观察节点内的梯度同步。",
+        "summary_en": "Eight A100s train a 1.5B model with DDP, to watch gradient sync inside one node.",
         "config": {
             "nodes": 1,
             "gpus_per_node": 8,
@@ -166,7 +186,9 @@ PRESETS = [
     {
         "id": "single_node_shard",
         "name": "单机放不下就分片",
+        "name_en": "Shard when one GPU is not enough",
         "summary": "4 张 A100 用 FSDP 训练 7B。完整模型超出单卡显存。",
+        "summary_en": "Four A100s train a 7B model with FSDP. The full model exceeds one GPU.",
         "config": {
             "nodes": 1,
             "gpus_per_node": 4,
@@ -191,7 +213,9 @@ PRESETS = [
     {
         "id": "multi_node_megatron",
         "name": "多机三维并行",
+        "name_en": "Multi-node 3D parallel",
         "summary": "4 个节点、每节点 8 张 H100，Megatron 训练 70B。张量并行留在节点内。",
+        "summary_en": "Four nodes of eight H100s train a 70B model with Megatron. Tensor parallelism stays inside the node.",
         "config": {
             "nodes": 4,
             "gpus_per_node": 8,
@@ -216,7 +240,9 @@ PRESETS = [
     {
         "id": "slow_network",
         "name": "慢网络拖垮步时",
+        "name_en": "A slow network stretches the step",
         "summary": "两台机器用 10GbE 做数据并行。计算不慢，梯度同步会很慢。",
+        "summary_en": "Two machines do data parallel over 10GbE. Compute is fine; gradient sync is slow.",
         "config": {
             "nodes": 2,
             "gpus_per_node": 2,
@@ -241,7 +267,9 @@ PRESETS = [
     {
         "id": "oom_case",
         "name": "单卡撑爆 7B",
+        "name_en": "One GPU cannot hold 7B",
         "summary": "一张 24GB 卡装 7B 的 Adam 状态。用来看显存账单，而不是把训练跑完。",
+        "summary_en": "A 24GB GPU cannot hold the Adam state of a 7B model. The point is the memory bill, not finishing the run.",
         "config": {
             "nodes": 1,
             "gpus_per_node": 1,
@@ -266,8 +294,22 @@ PRESETS = [
 ]
 
 
-def catalog_payload() -> dict:
+def catalog_payload(lang: str = "zh") -> dict:
+    lang = norm_lang(lang)
+    precisions = {
+        "zh": [
+            {"id": "bf16", "name": "BF16 混合精度"},
+            {"id": "fp16", "name": "FP16 混合精度"},
+            {"id": "fp32", "name": "FP32"},
+        ],
+        "en": [
+            {"id": "bf16", "name": "BF16 mixed precision"},
+            {"id": "fp16", "name": "FP16 mixed precision"},
+            {"id": "fp32", "name": "FP32"},
+        ],
+    }
     return {
+        "lang": lang,
         "gpus": [
             {
                 "id": key,
@@ -279,13 +321,13 @@ def catalog_payload() -> dict:
             for key, value in GPUS.items()
         ],
         "interconnects": [
-            {"id": key, "name": value["name"], "gbps": value["gbps"]}
+            {"id": key, "name": _pick(value, lang), "gbps": value["gbps"]}
             for key, value in INTERCONNECTS.items()
         ],
         "models": [
             {
                 "id": key,
-                "name": value["name"],
+                "name": _pick(value, lang),
                 "params": value["params"],
                 "layers": value["layers"],
                 "hidden": value["hidden"],
@@ -294,13 +336,17 @@ def catalog_payload() -> dict:
             for key, value in MODELS.items()
         ],
         "frameworks": [
-            {"id": key, "name": value["name"], "blurb": value["blurb"]}
+            {"id": key, "name": value["name"], "blurb": _pick(value, lang, "blurb")}
             for key, value in FRAMEWORKS.items()
         ],
-        "precisions": [
-            {"id": "bf16", "name": "BF16 混合精度"},
-            {"id": "fp16", "name": "FP16 混合精度"},
-            {"id": "fp32", "name": "FP32"},
+        "precisions": precisions[lang],
+        "presets": [
+            {
+                "id": item["id"],
+                "name": _pick(item, lang),
+                "summary": _pick(item, lang, "summary"),
+                "config": item["config"],
+            }
+            for item in PRESETS
         ],
-        "presets": PRESETS,
     }
