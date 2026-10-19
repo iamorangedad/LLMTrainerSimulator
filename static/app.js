@@ -1,23 +1,243 @@
-const STATUS_TEXT = {
-  ready: "就绪",
-  init: "初始化",
-  running: "训练中",
-  oom: "显存不足",
-  done: "已完成",
-  stopped: "已停止",
-  error: "配置错误",
+const COPY = {
+  zh: {
+    eyebrow: "教学估算 · 不占用 GPU",
+    title: "训练模拟台",
+    lede: "配置集群和框架，看显存、通信和一步训练分别花在哪里。",
+    langGroup: "语言",
+    preset: "预设",
+    hCluster: "集群",
+    nodes: "节点数",
+    gpusPerNode: "每节点 GPU",
+    gpu: "GPU",
+    interconnect: "节点间网络",
+    hFramework: "框架",
+    framework: "训练框架",
+    zero: "ZeRO 阶段",
+    zero1: "ZeRO-1 切分优化器状态",
+    zero2: "ZeRO-2 再切分梯度",
+    zero3: "ZeRO-3 再切分参数",
+    tp: "张量并行",
+    pp: "流水线并行",
+    offload: "优化器状态放到 CPU",
+    hModel: "模型与批次",
+    model: "模型",
+    precision: "精度",
+    micro: "微批次",
+    accum: "梯度累积",
+    seq: "序列长度",
+    lr: "学习率",
+    activationCkpt: "激活重计算",
+    hPlay: "播放",
+    steps: "步数",
+    speed: "速度",
+    start: "开始模拟",
+    stop: "停止",
+    memTitle: "单卡显存",
+    timeTitle: "一步时间",
+    estimateTag: "教学估算，不是跑分",
+    statLoss: "损失",
+    statTps: "吞吐",
+    statMfu: "FLOPs 利用率",
+    statStep: "步时",
+    statSpeedup: "加速比",
+    chartCaption: "横轴是步，纵轴是损失。曲线用于观察下降和跳动，不对应真实数据集。",
+    chartAria: "教学损失曲线",
+    formulasSummary: "估算说明",
+    logTitle: "模拟日志",
+    logHint: "每一行都来自估算模型",
+    logRegion: "模拟日志",
+    legendLabel: "阶段图例",
+    statusReady: "就绪",
+    statusInit: "初始化",
+    statusRunning: "训练中",
+    statusOom: "显存不足",
+    statusDone: "已完成",
+    statusStopped: "已停止",
+    statusError: "配置错误",
+    phaseIdle: "尚未开始",
+    phaseData: "取数",
+    phaseForward: "前向",
+    phaseBackward: "反向",
+    phaseComm: "通信",
+    phaseOptim: "优化器",
+    phaseCheckpoint: "检查点",
+    phaseFail: "失败",
+    catalogFail: "目录接口返回 ",
+    catalogMissing: "目录没有读到",
+    catalogHint: "请先启动服务后再打开这个页面。",
+    incomplete: "有数值还没填完整，或落在允许范围外。",
+    httpRejected: "请求没有被接受（",
+    topologyBad: "这组并行度排不出进程",
+    runTitle: "集群",
+    topologyLoading: "正在读取目录…",
+    speedup: "加速比等于单卡完成同样多 token 的计算时间除以当前步时。",
+    speedupSingle: "单卡放不下这份模型时，这个比值只比较算力和通信。",
+    memParam: "参数",
+    memGrad: "梯度",
+    memOptim: "优化器",
+    memAct: "激活",
+    memTransient: "临时拼参",
+    memOverhead: "开销",
+    memTotal: "合计 ",
+    memOffload: "CPU 上的优化器 ",
+    timeData: "取数 ",
+    timeCompute: "计算 ",
+    timeExposed: "暴露通信 ",
+    timeOptim: "优化器 ",
+    timeComm: "通信总量 ",
+    bubble: "，气泡 ",
+    logPlaceholder: "开始模拟后，这里按启动、同步、训练步的顺序出现日志。",
+    starting: "启动中",
+    playbackBroken: "[模拟] 播放中断：",
+    stepWord: "步 ",
+    oomBus: "分配失败，训练步没有开始",
+    oomStep: "分配失败",
+    playbackDone: "播放结束",
+    notStarted: "未开始",
+    chartLoss: "损失",
+    chartStep: "步",
+    splitConfigW: "调整配置区宽度",
+    splitSideW: "调整指标区宽度",
+    splitLog: "调整日志区高度",
+    splitConfigH: "调整配置区高度",
+    splitStageH: "调整集群区和指标区高度",
+  },
+  en: {
+    eyebrow: "Teaching estimate · no GPU used",
+    title: "Training simulator",
+    lede: "Set the cluster and framework, then see where memory, communication, and one training step go.",
+    langGroup: "Language",
+    preset: "Preset",
+    hCluster: "Cluster",
+    nodes: "Nodes",
+    gpusPerNode: "GPUs per node",
+    gpu: "GPU",
+    interconnect: "Inter-node network",
+    hFramework: "Framework",
+    framework: "Training framework",
+    zero: "ZeRO stage",
+    zero1: "ZeRO-1 shards optimizer state",
+    zero2: "ZeRO-2 also shards gradients",
+    zero3: "ZeRO-3 also shards parameters",
+    tp: "Tensor parallel",
+    pp: "Pipeline parallel",
+    offload: "Keep optimizer state on the CPU",
+    hModel: "Model and batch",
+    model: "Model",
+    precision: "Precision",
+    micro: "Micro-batch",
+    accum: "Gradient accumulation",
+    seq: "Sequence length",
+    lr: "Learning rate",
+    activationCkpt: "Activation recomputation",
+    hPlay: "Playback",
+    steps: "Steps",
+    speed: "Speed",
+    start: "Start",
+    stop: "Stop",
+    memTitle: "Memory on one GPU",
+    timeTitle: "One step",
+    estimateTag: "Teaching estimate, not a benchmark",
+    statLoss: "Loss",
+    statTps: "Throughput",
+    statMfu: "FLOPs utilization",
+    statStep: "Step time",
+    statSpeedup: "Speedup",
+    chartCaption: "The horizontal axis is the step, the vertical axis is loss. The curve shows the drop and the jumps. It is not a real dataset.",
+    chartAria: "Teaching loss curve",
+    formulasSummary: "How the estimate is made",
+    logTitle: "Simulated log",
+    logHint: "Every line comes from the estimate",
+    logRegion: "Simulated log",
+    legendLabel: "Phase legend",
+    statusReady: "Ready",
+    statusInit: "Starting",
+    statusRunning: "Training",
+    statusOom: "Out of memory",
+    statusDone: "Finished",
+    statusStopped: "Stopped",
+    statusError: "Bad config",
+    phaseIdle: "Not started",
+    phaseData: "Data",
+    phaseForward: "Forward",
+    phaseBackward: "Backward",
+    phaseComm: "Comm",
+    phaseOptim: "Optimizer",
+    phaseCheckpoint: "Checkpoint",
+    phaseFail: "Failed",
+    catalogFail: "Catalog request returned ",
+    catalogMissing: "Catalog was not loaded",
+    catalogHint: "Start the server, then open this page.",
+    incomplete: "A value is missing or outside the allowed range.",
+    httpRejected: "The request was not accepted (",
+    topologyBad: "This parallel layout does not fit on the processes",
+    runTitle: "Cluster",
+    topologyLoading: "Loading the catalog…",
+    speedup: "Speedup is the single-GPU compute time for the same tokens, divided by the current step time.",
+    speedupSingle: " When one GPU cannot hold the model, the ratio only compares compute and communication.",
+    memParam: "Params",
+    memGrad: "Grads",
+    memOptim: "Optimizer",
+    memAct: "Activation",
+    memTransient: "Gather",
+    memOverhead: "Overhead",
+    memTotal: "Total ",
+    memOffload: "Optimizer on CPU ",
+    timeData: "Data ",
+    timeCompute: "Compute ",
+    timeExposed: "Exposed comm ",
+    timeOptim: "Optimizer ",
+    timeComm: "All comm ",
+    bubble: ", bubble ",
+    logPlaceholder: "After you start, lines appear in order: launch, sync, then training steps.",
+    starting: "Starting",
+    playbackBroken: "[sim] Playback interrupted: ",
+    stepWord: "Step ",
+    oomBus: "Allocation failed. Training steps did not start",
+    oomStep: "Allocation failed",
+    playbackDone: "Playback finished",
+    notStarted: "Not started",
+    chartLoss: "Loss",
+    chartStep: "Step",
+    splitConfigW: "Resize the config pane",
+    splitSideW: "Resize the metrics pane",
+    splitLog: "Resize the log pane",
+    splitConfigH: "Resize the config pane height",
+    splitStageH: "Resize the cluster and metrics heights",
+  },
 };
 
-const PHASE_TEXT = {
-  idle: "尚未开始",
-  data: "取数",
-  forward: "前向",
-  backward: "反向",
-  comm: "通信",
-  optim: "优化器",
-  checkpoint: "检查点",
-  fail: "失败",
+const STATUS_KEY = {
+  ready: "statusReady",
+  init: "statusInit",
+  running: "statusRunning",
+  oom: "statusOom",
+  done: "statusDone",
+  stopped: "statusStopped",
+  error: "statusError",
 };
+
+const PHASE_KEY = {
+  idle: "phaseIdle",
+  data: "phaseData",
+  forward: "phaseForward",
+  backward: "phaseBackward",
+  comm: "phaseComm",
+  optim: "phaseOptim",
+  checkpoint: "phaseCheckpoint",
+  fail: "phaseFail",
+};
+
+let lang = "zh";
+let phaseId = "idle";
+let phaseBus = "";
+let stepKind = "idle";
+let stepNums = { step: 0, steps: 0 };
+
+function tr(key) {
+  const pack = COPY[lang] || COPY.zh;
+  return pack[key] !== undefined ? pack[key] : key;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,6 +251,12 @@ let losses = [];
 let previewGen = 0;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const stored = window.localStorage.getItem("llm-sim-lang");
+  lang = stored === "en" ? "en" : "zh";
+  applyStatic();
+  document.querySelectorAll(".lang-btn").forEach((button) => {
+    button.addEventListener("click", () => setLanguage(button.dataset.lang));
+  });
   $("configForm").addEventListener("submit", (event) => {
     event.preventDefault();
     start();
@@ -49,8 +275,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   setPlaceholder();
   try {
-    const response = await fetch("/api/catalog");
-    if (!response.ok) throw new Error("目录接口返回 " + response.status);
+    const response = await fetch("/api/catalog?lang=" + lang);
+    if (!response.ok) throw new Error(tr("catalogFail") + response.status);
     catalog = await response.json();
     fillSelect($("gpu"), catalog.gpus);
     fillSelect($("interconnect"), catalog.interconnects);
@@ -60,8 +286,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     fillSelect($("preset"), catalog.presets.map((item) => ({ id: item.id, name: item.name })));
     applyPreset(catalog.presets[0]);
   } catch (error) {
-    $("topologyLine").textContent = "目录没有读到";
-    showBanner("errors", "请先启动服务后再打开这个页面。\n" + error.message);
+    $("topologyLine").textContent = tr("catalogMissing");
+    showBanner("errors", tr("catalogHint") + "\n" + error.message);
   }
 });
 
@@ -137,6 +363,7 @@ function gather() {
     steps: intOf("steps"),
     lr: Number($("lr").value),
     speed: Number($("speed").value),
+    lang,
   };
 }
 
@@ -150,7 +377,7 @@ async function preview() {
   if (!configLooksComplete(cfg)) {
     canStart = false;
     lock(false);
-    showBanner("errors", "有数值还没填完整，或落在允许范围外。");
+    showBanner("errors", tr("incomplete"));
     return;
   }
   const gen = ++previewGen;
@@ -184,7 +411,7 @@ async function explainHttp(response) {
     }
     return JSON.stringify(body.detail || body);
   } catch (_error) {
-    return "请求没有被接受（" + response.status + "）。";
+    return tr("httpRejected") + response.status + ").";
   }
 }
 
@@ -196,12 +423,16 @@ function renderPlan(next, fromRun) {
   const parallel = plan.parallel;
   const nodes = plan.cluster.nodes || [];
   if (plan.errors.length) {
-    $("topologyLine").textContent = "这组并行度排不出进程";
-    $("runTitle").textContent = "集群";
+    $("topologyLine").textContent = tr("topologyBad");
+    $("runTitle").textContent = tr("runTitle");
     $("cluster").replaceChildren();
   } else {
     const perNode = nodes[0] ? nodes[0].gpus.length : 0;
-    $("topologyLine").textContent = nodes.length + " 节点 × " + perNode + " 卡 = " + parallel.world + " 进程";
+    $("topologyLine").textContent = lang === "en"
+      ? nodes.length + (nodes.length === 1 ? " node" : " nodes")
+        + " × " + perNode + (perNode === 1 ? " GPU" : " GPUs")
+        + " = " + parallel.world + (parallel.world === 1 ? " process" : " processes")
+      : nodes.length + " 节点 × " + perNode + " 卡 = " + parallel.world + " 进程";
     const labels = plan.labels;
     $("runTitle").textContent = labels.framework + " · " + labels.model;
     renderCluster(plan);
@@ -224,9 +455,9 @@ function renderPlan(next, fromRun) {
 
 function speedupText(timing) {
   if (!timing) return "";
-  let text = "加速比等于单卡完成同样多 token 的计算时间除以当前步时。";
+  let text = tr("speedup");
   if (!timing.single_gpu_fits) {
-    text += "单卡放不下这份模型时，这个比值只比较算力和通信。";
+    text += tr("speedupSingle");
   }
   return text;
 }
@@ -292,12 +523,12 @@ function renderMemory(memory) {
     bar.append(cap);
   }
   const bits = [
-    ["参数", memory.param_gb],
-    ["梯度", memory.grad_gb],
-    ["优化器", memory.optim_gb],
-    ["激活", memory.activation_gb],
-    ["临时拼参", memory.transient_gb],
-    ["开销", memory.overhead_gb],
+    [tr("memParam"), memory.param_gb],
+    [tr("memGrad"), memory.grad_gb],
+    [tr("memOptim"), memory.optim_gb],
+    [tr("memAct"), memory.activation_gb],
+    [tr("memTransient"), memory.transient_gb],
+    [tr("memOverhead"), memory.overhead_gb],
   ];
   $("memText").replaceChildren();
   for (const [name, value] of bits) {
@@ -308,12 +539,12 @@ function renderMemory(memory) {
   }
   const total = document.createElement("span");
   const strong = document.createElement("b");
-  strong.textContent = "合计 " + memory.total_gb.toFixed(2) + " / " + memory.gpu_gb + " GB";
+  strong.textContent = tr("memTotal") + memory.total_gb.toFixed(2) + " / " + memory.gpu_gb + " GB";
   total.append(strong);
   $("memText").append(total);
   if (memory.optim_offload_gb > 0) {
     const extra = document.createElement("span");
-    extra.textContent = "CPU 上的优化器 " + memory.optim_offload_gb.toFixed(2) + " GB";
+    extra.textContent = tr("memOffload") + memory.optim_offload_gb.toFixed(2) + " GB";
     $("memText").append(extra);
   }
 }
@@ -340,13 +571,13 @@ function renderTime(timing) {
     seg.style.width = (value / scale) * 100 + "%";
     bar.append(seg);
   }
-  const bubble = timing.bubble_frac > 0 ? "，气泡 " + Math.round(timing.bubble_frac * 100) + "%" : "";
+  const bubble = timing.bubble_frac > 0 ? tr("bubble") + Math.round(timing.bubble_frac * 100) + "%" : "";
   $("timeText").textContent =
-    "取数 " + formatMs(timing.data_ms) +
-    " · 计算 " + formatMs(timing.compute_ms) +
-    " · 暴露通信 " + formatMs(timing.exposed_comm_ms) +
-    " · 优化器 " + formatMs(timing.optim_ms) +
-    " · 通信总量 " + formatMs(timing.comm_ms) +
+    tr("timeData") + formatMs(timing.data_ms) +
+    " · " + tr("timeCompute") + formatMs(timing.compute_ms) +
+    " · " + tr("timeExposed") + formatMs(timing.exposed_comm_ms) +
+    " · " + tr("timeOptim") + formatMs(timing.optim_ms) +
+    " · " + tr("timeComm") + formatMs(timing.comm_ms) +
     bubble;
 }
 
@@ -403,12 +634,14 @@ function showBanner(id, text) {
 function setStatus(status) {
   const pill = $("statusPill");
   pill.dataset.status = status;
-  pill.textContent = STATUS_TEXT[status] || status;
+  pill.textContent = tr(STATUS_KEY[status] || "") || status;
 }
 
 function setPhase(phase, bus) {
-  $("phaseLabel").textContent = PHASE_TEXT[phase] || phase;
-  $("busLabel").textContent = bus || "";
+  phaseId = phase || "idle";
+  phaseBus = bus || "";
+  $("phaseLabel").textContent = tr(PHASE_KEY[phaseId] || "") || phaseId;
+  $("busLabel").textContent = phaseBus;
   document.querySelectorAll(".gpu").forEach((chip) => {
     chip.dataset.phase = phase === "idle" ? "idle" : phase;
   });
@@ -417,7 +650,7 @@ function setPhase(phase, bus) {
 function setPlaceholder() {
   const line = document.createElement("div");
   line.className = "placeholder";
-  line.textContent = "开始模拟后，这里按启动、同步、训练步的顺序出现日志。";
+  line.textContent = tr("logPlaceholder");
   $("log").replaceChildren(line);
 }
 
@@ -448,7 +681,8 @@ async function start() {
   drawChart(losses);
   clearLog();
   setStatus("init");
-  $("stepLabel").textContent = "启动中";
+  stepKind = "starting";
+  writeStepLabel();
   lock(true);
   try {
     const response = await fetch("/api/run", {
@@ -484,7 +718,7 @@ async function start() {
       return;
     }
     if (id === runId) {
-      appendLog("error", "[模拟] 播放中断：" + error.message);
+      appendLog("error", tr("playbackBroken") + error.message);
       setStatus("error");
     }
   } finally {
@@ -520,7 +754,9 @@ function handle(event) {
     $("tps").textContent = formatTok(event.tokens_per_s);
     $("mfu").textContent = (event.mfu * 100).toFixed(1) + "%";
     $("stepTime").textContent = formatMs(event.step_ms);
-    $("stepLabel").textContent = "步 " + event.step + " / " + event.steps;
+    stepKind = "step";
+    stepNums = { step: event.step, steps: event.steps };
+    writeStepLabel();
     renderTime({
       data_ms: event.data_ms,
       compute_ms: event.compute_ms,
@@ -539,12 +775,29 @@ function handle(event) {
   if (event.kind === "status") {
     setStatus(event.status);
     if (event.status === "oom") {
-      setPhase("fail", "分配失败，训练步没有开始");
-      $("stepLabel").textContent = "分配失败";
+      stepKind = "oom";
+      setPhase("fail", tr("oomBus"));
+      writeStepLabel();
     }
-    if (event.status === "done") $("stepLabel").textContent = "播放结束";
-    if (event.status === "error") $("stepLabel").textContent = "未开始";
+    if (event.status === "done") {
+      stepKind = "done";
+      writeStepLabel();
+    }
+    if (event.status === "error") {
+      stepKind = "error";
+      writeStepLabel();
+    }
+    if (event.status === "stopped") stepKind = "stopped";
   }
+}
+
+function writeStepLabel() {
+  if (stepKind === "starting") $("stepLabel").textContent = tr("starting");
+  else if (stepKind === "step") $("stepLabel").textContent = tr("stepWord") + stepNums.step + " / " + stepNums.steps;
+  else if (stepKind === "oom") $("stepLabel").textContent = tr("oomStep");
+  else if (stepKind === "done") $("stepLabel").textContent = tr("playbackDone");
+  else if (stepKind === "error") $("stepLabel").textContent = tr("notStarted");
+  else $("stepLabel").textContent = tr("phaseIdle");
 }
 
 function lock(on) {
@@ -590,8 +843,8 @@ function drawChart(points) {
   ctx.lineTo(left, height - bottom);
   ctx.lineTo(width - right, height - bottom);
   ctx.stroke();
-  ctx.fillText("损失", 2, 12);
-  ctx.fillText("步", width - 18, height - 4);
+  ctx.fillText(tr("chartLoss"), 2, 12);
+  ctx.fillText(tr("chartStep"), width - 18, height - 4);
   if (!points.length) return;
   const maxY = Math.max(5, ...points) * 1.08;
   const plotW = width - left - right;
@@ -651,9 +904,67 @@ function syncSplitterAxes() {
   for (const handle of document.querySelectorAll(".splitter-col")) {
     handle.setAttribute("aria-orientation", stacked ? "horizontal" : "vertical");
     handle.setAttribute("aria-label", stacked
-      ? (handle.dataset.resize === "config" ? "调整配置区高度" : "调整集群区和指标区高度")
-      : (handle.dataset.resize === "config" ? "调整配置区宽度" : "调整指标区宽度"));
+      ? (handle.dataset.resize === "config" ? tr("splitConfigH") : tr("splitStageH"))
+      : (handle.dataset.resize === "config" ? tr("splitConfigW") : tr("splitSideW")));
   }
+  const logHandle = document.querySelector('.splitter[data-resize="log"]');
+  if (logHandle) logHandle.setAttribute("aria-label", tr("splitLog"));
+}
+
+function applyStatic() {
+  document.documentElement.lang = lang === "en" ? "en" : "zh-CN";
+  document.title = tr("title");
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = tr(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((node) => {
+    node.setAttribute("aria-label", tr(node.dataset.i18nAria));
+  });
+  document.querySelectorAll(".lang-btn").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.lang === lang ? "true" : "false");
+  });
+  if ($("statusPill")) setStatus($("statusPill").dataset.status || "ready");
+  writeStepLabel();
+  if ($("phaseLabel")) setPhase(phaseId, phaseBus);
+  if (!catalog && $("topologyLine")) $("topologyLine").textContent = tr("topologyLoading");
+  if (typeof narrowQuery !== "undefined") syncSplitterAxes();
+}
+
+async function setLanguage(next) {
+  if (next !== "zh" && next !== "en") return;
+  if (next === lang) return;
+  lang = next;
+  window.localStorage.setItem("llm-sim-lang", lang);
+  applyStatic();
+  if (!catalog) return;
+  const selected = ["preset", "gpu", "interconnect", "framework", "model", "precision"]
+    .reduce((acc, id) => { acc[id] = $(id).value; return acc; }, {});
+  try {
+    const response = await fetch("/api/catalog?lang=" + lang);
+    if (!response.ok) throw new Error(tr("catalogFail") + response.status);
+    catalog = await response.json();
+    fillSelect($("gpu"), catalog.gpus);
+    fillSelect($("interconnect"), catalog.interconnects);
+    fillSelect($("framework"), catalog.frameworks);
+    fillSelect($("model"), catalog.models);
+    fillSelect($("precision"), catalog.precisions);
+    fillSelect($("preset"), catalog.presets.map((item) => ({ id: item.id, name: item.name })));
+    for (const [id, value] of Object.entries(selected)) $(id).value = value;
+    const preset = catalog.presets.find((item) => item.id === $("preset").value);
+    if (preset) $("presetSummary").textContent = preset.summary;
+    syncFramework();
+  } catch (error) {
+    showBanner("errors", tr("catalogHint") + "\n" + error.message);
+    return;
+  }
+  if ($("log").querySelector(".placeholder")) setPlaceholder();
+  if (plan) {
+    renderMemory(plan.memory);
+    renderTime(plan.timing);
+    $("speedupNote").textContent = speedupText(plan.timing);
+    drawChart(losses);
+  }
+  if (!running) preview();
 }
 
 function beginPaneDrag(handle, event) {
