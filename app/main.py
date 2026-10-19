@@ -38,9 +38,10 @@ class RunConfig(BaseModel):
     steps: int = Field(ge=1, le=300)
     lr: float = Field(gt=0, le=1)
     speed: float = Field(ge=1, le=8)
+    lang: str = "zh"
 
     def to_train(self) -> TrainConfig:
-        return TrainConfig(**self.model_dump())
+        return TrainConfig(**self.model_dump(exclude={"lang"}))
 
 
 @app.get("/")
@@ -49,13 +50,13 @@ def index():
 
 
 @app.get("/api/catalog")
-def catalog():
-    return catalog_payload()
+def catalog(lang: str = "zh"):
+    return catalog_payload(lang)
 
 
 @app.post("/api/preview")
 def preview(cfg: RunConfig):
-    return build_plan(cfg.to_train())
+    return build_plan(cfg.to_train(), cfg.lang)
 
 
 @app.post("/api/run")
@@ -64,7 +65,7 @@ async def run(cfg: RunConfig, request: Request):
 
     async def generate():
         try:
-            async for event in simulate(train, request.is_disconnected):
+            async for event in simulate(train, request.is_disconnected, cfg.lang):
                 yield json.dumps(event, ensure_ascii=False) + "\n"
         except asyncio.CancelledError:
             return
