@@ -6,7 +6,7 @@ import asyncio
 import unittest
 from dataclasses import replace
 
-from app.catalog import PRESETS
+from app.catalog import PRESETS, catalog_payload
 from app.engine import TrainConfig, build_plan, loss_series, simulate, spike_step, startup_lines
 
 
@@ -158,6 +158,30 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[-1], {"kind": "status", "status": "oom"})
         self.assertFalse(any(event["kind"] == "metrics" for event in events))
         self.assertTrue(any("分配失败" in event.get("text", "") for event in events))
+
+
+class LanguageTests(unittest.TestCase):
+    def test_chinese_copy_stays_the_default(self):
+        plan = plan_of("oom_case")
+        self.assertEqual(plan["lang"], "zh")
+        lines = [text for _level, text in startup_lines(plan)]
+        self.assertTrue(all(text.startswith("[模拟]") for text in lines))
+        self.assertTrue(any("分配失败" in text for text in lines))
+        self.assertEqual(catalog_payload()["presets"][0]["name"], "单卡入门")
+
+    def test_english_copy_is_available(self):
+        cfg = config_of("oom_case")
+        plan = build_plan(cfg, "en")
+        self.assertEqual(plan["lang"], "en")
+        self.assertTrue(any("This GPU cannot hold it" == note["title"] for note in plan["notes"]))
+        lines = [text for _level, text in startup_lines(plan)]
+        self.assertTrue(all(text.startswith("[sim]") for text in lines))
+        self.assertTrue(any("Allocation failed" in text for text in lines))
+        self.assertFalse(any("分配失败" in text for text in lines))
+        names = {item["id"]: item["name"] for item in catalog_payload("en")["presets"]}
+        self.assertEqual(names["single_small"], "Single-GPU start")
+        bad = build_plan(replace(cfg, framework="megatron", tp=5, pp=1, gpus_per_node=5), "en")
+        self.assertTrue(any("attention heads" in err.lower() or "Attention heads" in err for err in bad["errors"]))
 
 
 if __name__ == "__main__":
