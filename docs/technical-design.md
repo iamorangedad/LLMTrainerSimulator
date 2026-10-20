@@ -105,7 +105,7 @@ This path was chosen because the product is the estimate and the explanation, no
 
 The service process hosts the static page and the API together. The default address is `http://<host>:7860`.
 
-Dependencies stay at:
+Dependencies are managed with uv, declared in `pyproject.toml`, and pinned in `uv.lock`. They stay at:
 
 - `fastapi`
 - `uvicorn`
@@ -409,7 +409,9 @@ After this document was confirmed, the implementation follows this layout.
 ```text
 LLMTrainerSimulator/
   docs/技术方案.md
-  requirements.txt
+  pyproject.toml
+  uv.lock
+  .python-version
   app/
     catalog.py      # catalog and presets from section 5
     engine.py       # checks, plan, log, and per-step events
