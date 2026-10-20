@@ -15,11 +15,11 @@ The numbers compare configurations and show where time and memory go. They are n
 
 ## Run
 
-Python 3.10 is required, plus FastAPI and Uvicorn from `requirements.txt`.
+Python 3.10 and [uv](https://docs.astral.sh/uv/) are required. Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`.
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7860
+uv sync
+uv run uvicorn app.main:app --host 0.0.0.0 --port 7860
 ```
 
 Open <http://127.0.0.1:7860>.
@@ -27,7 +27,7 @@ Open <http://127.0.0.1:7860>.
 ## Tests
 
 ```bash
-python3 -m unittest tests.test_plan -v
+uv run python -m unittest tests.test_plan -v
 ```
 
 ## Documents
