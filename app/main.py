@@ -38,6 +38,15 @@ class RunConfig(BaseModel):
     steps: int = Field(ge=1, le=300)
     lr: float = Field(gt=0, le=1)
     speed: float = Field(ge=1, le=8)
+    dataset: str = "none"
+    pack_sequences: bool = True
+    lr_schedule: str = "warmup_constant"
+    weight_decay: float = Field(default=0.1, ge=0, le=1)
+    grad_clip: float = Field(default=1.0, ge=0, le=100)
+    ckpt_every_steps: int = Field(default=0, ge=0, le=1_000_000)
+    resume_step: int = Field(default=0, ge=0, le=1_000_000)
+    eval_every_steps: int = Field(default=0, ge=0, le=1_000_000)
+    fault: str = "none"
     lang: str = "zh"
 
     def to_train(self) -> TrainConfig:
