@@ -14,11 +14,12 @@ import random
 from dataclasses import asdict, dataclass
 from typing import Awaitable, Callable, Optional
 
-from app.catalog import FRAMEWORKS, GPUS, INTERCONNECTS, MODELS, _pick
+from app.catalog import DATASETS, FRAMEWORKS, GPUS, INTERCONNECTS, MODELS, _pick
 from app.i18n import norm_lang, sim, t
 
 OVERHEAD_BYTES = 1.2 * (1024**3)
 PCIE_OFFLOAD_GBPS = 12.0
+DISK_BPS = 2e9
 GIB = 1024**3
 
 Disconnect = Callable[[], Awaitable[bool]]
@@ -44,6 +45,15 @@ class TrainConfig:
     steps: int
     lr: float
     speed: float
+    dataset: str = "none"
+    pack_sequences: bool = True
+    lr_schedule: str = "warmup_constant"
+    weight_decay: float = 0.1
+    grad_clip: float = 1.0
+    ckpt_every_steps: int = 0
+    resume_step: int = 0
+    eval_every_steps: int = 0
+    fault: str = "none"
 
 
 def build_plan(cfg: TrainConfig, lang: str = "zh") -> dict:
@@ -318,11 +328,21 @@ def build_plan(cfg: TrainConfig, lang: str = "zh") -> dict:
             f"Communication uses the ring formulas, and is hierarchical across nodes. The share hidden behind compute this time is {overlap:.2f}. Exposed communication = max(0, communication − that share × pure compute). The factors are teaching settings, not a benchmark.",
         ),
     ]
+    job = _job(
+        cfg, lang, batch, timing, parallel, param_bytes, opt_bytes, framework, zero_stage,
+    )
+    advice = _advice(cfg, framework, tp, bubble, fits, lang)
+    for item in advice:
+        if item["level"] == "warn":
+            warnings.append(item["body"])
+    notes = notes + _job_notes(cfg, lang, job, timing)
     return {
         "lang": lang,
         "errors": errors,
         "warnings": warnings,
         "notes": notes,
+        "advice": advice,
+        "job": job,
         "cluster": cluster,
         "memory": memory,
         "parallel": parallel,
@@ -422,6 +442,7 @@ def startup_lines(plan: dict) -> list[tuple[str, str]]:
             f"{tag} 另有优化器状态 {m['optim_offload_gb']:.2f} GB 放在 CPU。",
             f"{tag} Another {m['optim_offload_gb']:.2f} GB of optimizer state sits on the CPU.",
         )))
+    lines.extend(_job_startup_lines(plan))
     note_tag = t(lang, f"{tag}[注意]", f"{tag}[note]")
     joiner = "。" if lang == "zh" else ". "
     for note in plan["notes"]:
@@ -498,6 +519,23 @@ def lr_at(step: int, steps: int, base: float) -> float:
     return base
 
 
+def lr_for_step(step: int, cfg: TrainConfig, plan: dict) -> float:
+    """默认日程沿用升温后保持。余弦日程按 token 走，没有语料时视野退回这次播放。"""
+    if cfg.lr_schedule != "warmup_cosine":
+        return lr_at(step, cfg.steps, cfg.lr)
+    job = plan["job"]
+    horizon_steps = job["full_steps"] or cfg.steps
+    tokens_per = max(int(job["tokens_per_step"]), 1)
+    tokens = (cfg.resume_step + step) * tokens_per
+    horizon = horizon_steps * tokens_per
+    warm = max(tokens_per, 0.01 * horizon)
+    if tokens <= warm:
+        return cfg.lr * tokens / warm
+    progress = min(1.0, (tokens - warm) / max(horizon - warm, 1.0))
+    cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return cfg.lr * (0.1 + 0.9 * cosine)
+
+
 def spike_step(cfg: TrainConfig) -> Optional[int]:
     if cfg.nodes > 1 and cfg.steps >= 8:
         return cfg.steps // 2
@@ -547,12 +585,18 @@ async def simulate(cfg: TrainConfig, is_disconnected: Optional[Disconnect] = Non
     yield {"kind": "status", "status": "running"}
     rng = random.Random(config_seed(cfg))
     spiked = spike_step(cfg)
-    slow_at = max(2, cfg.steps // 3) if cfg.nodes > 1 and cfg.steps >= 4 else None
-    ckpt_at = cfg.steps // 2 if cfg.steps >= 8 else None
+    slow_at = None
+    if cfg.fault == "none" and cfg.nodes > 1 and cfg.steps >= 4:
+        slow_at = max(2, cfg.steps // 3)
+    fault_at = max(2, cfg.steps // 3) if cfg.fault == "nccl_timeout" and cfg.steps >= 2 else None
+    overflow_at = max(2, cfg.steps // 3) if cfg.precision == "fp16" and cfg.steps >= 4 else None
+    ckpt_at = None if cfg.ckpt_every_steps > 0 else (cfg.steps // 2 if cfg.steps >= 8 else None)
     timing = plan["timing"]
+    ckpt_ms = plan["job"]["checkpoint"]["ckpt_ms"]
     played_steps: list[float] = []
     last_node = plan["cluster"]["nodes"][-1]
     last_rank = last_node["gpus"][-1]["rank"]
+    loss_scale = 65536
 
     for step in range(1, cfg.steps + 1):
         phase_sleep = (0.42 if step == 1 else 0.16) / speed
@@ -564,11 +608,18 @@ async def simulate(cfg: TrainConfig, is_disconnected: Optional[Disconnect] = Non
             yield event
             if step == 1:
                 yield {"kind": "log", "level": "info", "text": _first_step_line(plan, phase, cfg)}
+            if phase == "optim" and overflow_at is not None and step == overflow_at:
+                yield {"kind": "log", "level": "warn", "text": _overflow_line(plan, loss_scale)}
+                loss_scale //= 2
+            if fault_at is not None and step == fault_at and phase == "comm":
+                yield {"kind": "log", "level": "error", "text": _timeout_line(plan, last_node, last_rank, step)}
+                yield {"kind": "status", "status": "timeout"}
+                return
             if not await _pause(phase_sleep, is_disconnected):
                 return
 
         loss = loss_value(step, cfg.steps, rng, spiked)
-        current_lr = lr_at(step, cfg.steps, cfg.lr)
+        current_lr = lr_for_step(step, cfg, plan)
         factor = 1.0
         if slow_at is not None and step == slow_at:
             factor = 1.25
@@ -622,6 +673,9 @@ async def simulate(cfg: TrainConfig, is_disconnected: Optional[Disconnect] = Non
             }
 
         step_ms = timing["step_ms"] * factor
+        save_now = cfg.ckpt_every_steps > 0 and step % cfg.ckpt_every_steps == 0
+        if save_now:
+            step_ms += ckpt_ms
         exposed_ms = timing["exposed_comm_ms"] + timing["step_ms"] * (factor - 1.0)
         played_steps.append(step_ms)
         metrics = {
@@ -643,22 +697,20 @@ async def simulate(cfg: TrainConfig, is_disconnected: Optional[Disconnect] = Non
         yield {"kind": "log", "level": "info", "text": _step_summary(metrics, plan.get("lang"))}
         yield metrics
 
-        if ckpt_at is not None and step == ckpt_at:
+        if save_now or (ckpt_at is not None and step == ckpt_at):
             yield {"kind": "phase", "phase": "checkpoint", "step": step}
-            yield {"kind": "log", "level": "info", "text": checkpoint_line(plan)}
+            text = _checkpoint_save_line(plan) if save_now else checkpoint_line(plan)
+            yield {"kind": "log", "level": "info", "text": text}
             if not await _pause(0.2 / speed, is_disconnected):
                 return
 
-        if step == cfg.steps:
+        eval_on_interval = cfg.eval_every_steps > 0 and step % cfg.eval_every_steps == 0
+        if eval_on_interval or (cfg.eval_every_steps == 0 and step == cfg.steps):
             eval_loss = loss + 0.15
             yield {
                 "kind": "log",
                 "level": "info",
-                "text": t(
-                    plan.get("lang"),
-                    f"[模拟][eval] 验证损失 {eval_loss:.3f}。这是教学曲线，不是某个数据集上的成绩。",
-                    f"[sim][eval] Validation loss {eval_loss:.3f}. This is a teaching curve, not a score on a dataset.",
-                ),
+                "text": _eval_line(plan, eval_loss, eval_on_interval),
             }
 
     avg_ms = sum(played_steps) / len(played_steps)
@@ -691,6 +743,387 @@ async def simulate(cfg: TrainConfig, is_disconnected: Optional[Disconnect] = Non
     yield {"kind": "status", "status": "done"}
 
 
+def _empty_job() -> dict:
+    return {
+        "dataset": "none",
+        "dataset_name": "",
+        "corpus_tokens": None,
+        "tokens_per_step": 0,
+        "tokens_per_rank_step": 0,
+        "full_steps": None,
+        "playback_steps": 0,
+        "playback_wall_s": 0.0,
+        "full_wall_s": None,
+        "gpu_hours": None,
+        "effective_token_ratio": 1.0,
+        "pack_sequences": True,
+        "mfu_band": "ok",
+        "eval_s": 0.0,
+        "lr_schedule": "warmup_constant",
+        "weight_decay": 0.1,
+        "grad_clip": 1.0,
+        "resume_step": 0,
+        "cursor_tokens": 0,
+        "collective": "none",
+        "fault": "none",
+        "checkpoint": {"ckpt_bytes": 0, "ckpt_ms": 0.0, "every_steps": 0},
+    }
+
+
+def _step_collective(framework: str, zero_stage: int, tp: int, dp: int) -> str:
+    if framework == "megatron" and tp > 1:
+        return "allreduce"
+    if framework == "fsdp" or (framework == "deepspeed" and zero_stage == 3):
+        return "allgather"
+    if framework == "deepspeed" and zero_stage == 2:
+        return "reduce_scatter"
+    if dp > 1:
+        return "allreduce"
+    return "none"
+
+
+def _mfu_band(mfu: float) -> str:
+    if mfu < 0.25:
+        return "low"
+    if mfu <= 0.55:
+        return "ok"
+    return "high"
+
+
+def _job(cfg, lang, batch, timing, parallel, param_bytes, opt_bytes, framework, zero_stage) -> dict:
+    tokens_per_step = int(batch["global_tokens"])
+    tokens_per_rank = cfg.micro_batch * cfg.grad_accum * cfg.seq_len
+    dataset = DATASETS.get(cfg.dataset) or DATASETS["none"]
+    corpus = dataset["tokens"]
+    full_steps = math.ceil(corpus / tokens_per_step) if corpus and tokens_per_step else None
+    step_s = timing["step_ms"] / 1000
+    full_wall = full_steps * step_s if full_steps else None
+    world = parallel["world"]
+    ckpt_bytes = param_bytes + opt_bytes
+    ckpt_ms = ckpt_bytes / DISK_BPS * 1000
+    eval_s = step_s * 0.15 * 4 if cfg.eval_every_steps > 0 else 0.0
+    return {
+        "dataset": cfg.dataset if cfg.dataset in DATASETS else "none",
+        "dataset_name": _pick(dataset, lang),
+        "corpus_tokens": corpus,
+        "tokens_per_step": tokens_per_step,
+        "tokens_per_rank_step": tokens_per_rank,
+        "full_steps": full_steps,
+        "playback_steps": cfg.steps,
+        "playback_wall_s": cfg.steps * step_s,
+        "full_wall_s": full_wall,
+        "gpu_hours": (world * full_wall / 3600) if full_wall is not None else None,
+        "effective_token_ratio": 1.0 if cfg.pack_sequences else 0.7,
+        "pack_sequences": bool(cfg.pack_sequences),
+        "mfu_band": _mfu_band(timing["mfu"]),
+        "eval_s": eval_s,
+        "lr_schedule": cfg.lr_schedule,
+        "weight_decay": cfg.weight_decay,
+        "grad_clip": cfg.grad_clip,
+        "resume_step": cfg.resume_step,
+        "cursor_tokens": (cfg.resume_step + cfg.steps) * tokens_per_rank,
+        "collective": _step_collective(framework, zero_stage, parallel["tp"], parallel["dp"]),
+        "fault": cfg.fault,
+        "checkpoint": {
+            "ckpt_bytes": int(ckpt_bytes),
+            "ckpt_ms": ckpt_ms,
+            "every_steps": cfg.ckpt_every_steps,
+        },
+    }
+
+
+def _advice(cfg, framework, tp, bubble, fits, lang) -> list[dict]:
+    items: list[dict] = []
+
+    def add(level: str, zh: str, en: str) -> None:
+        items.append({
+            "id": f"advice-{len(items)}",
+            "level": level,
+            "title": t(lang, "并行建议", "Parallel advice"),
+            "body": t(lang, zh, en),
+        })
+
+    warned = False
+    if framework == "megatron" and tp > cfg.gpus_per_node:
+        add(
+            "warn",
+            "张量并行度大于每节点 GPU 数，层内通信跨出节点。",
+            "Tensor parallelism is wider than one node, so intra-layer communication crosses the network.",
+        )
+        warned = True
+    if framework == "megatron" and cfg.gpus_per_node % tp != 0:
+        add(
+            "warn",
+            "张量并行度不能整除每节点 GPU 数，一个张量并行组被拆到两台机器上。",
+            "Tensor parallelism does not divide the GPUs on a node, so one tensor-parallel group is split across machines.",
+        )
+        warned = True
+    if bubble > 0.30:
+        add(
+            "warn",
+            "流水线气泡超过 30%，气泡吃掉了一部分计算。",
+            "The pipeline bubble is above 30%, so the bubble eats into compute.",
+        )
+        warned = True
+    shardable = framework == "ddp" or (framework == "deepspeed" and cfg.zero_stage < 3)
+    if shardable and cfg.nodes * cfg.gpus_per_node > 1 and not fits:
+        add(
+            "warn",
+            "当前框架放不下。可以改用 FSDP 或 ZeRO-3，把参数和优化器状态切到多张卡上。",
+            "This framework does not fit. FSDP or ZeRO-3 can shard parameters and optimizer state across GPUs.",
+        )
+        warned = True
+    if not warned:
+        add(
+            "info",
+            "张量并行优先占满节点内的卡，余下的卡给数据并行。流水线只在层数划得开、气泡可接受时再加。",
+            "Fill a node with tensor parallelism first, and give the remaining GPUs to data parallelism. Add pipeline parallelism when the layers divide and the bubble stays acceptable.",
+        )
+    return items
+
+
+def _schedule_name(schedule: str, lang: str) -> str:
+    if schedule == "warmup_cosine":
+        return t(lang, "先升温再余弦衰减", "warmup then cosine")
+    return t(lang, "先升温再保持", "warmup then hold")
+
+
+def _job_notes(cfg, lang, job, timing) -> list[dict]:
+    ratio = job["effective_token_ratio"]
+    pack = t(
+        lang,
+        "序列按文档拼接，有效 token 比例按 1 估计。",
+        "Sequences are packed from documents. The effective-token ratio is taken as 1.",
+    ) if cfg.pack_sequences else t(
+        lang,
+        "序列不拼接，大约三成位置被补齐吃掉，有效 token 比例按 0.7 估计。步时仍按完整序列计算。",
+        "Sequences are not packed, so padding takes about 30% of the positions and the effective-token ratio is 0.7. Step time still uses the full sequence.",
+    )
+    notes = [{
+        "id": "data-shard",
+        "level": "info",
+        "title": t(lang, "数据分片", "Data shard"),
+        "body": t(
+            lang,
+            (
+                f"数据并行秩 r 读取 sample_index % dp == r 的样本，每步 {job['tokens_per_rank_step']} 个 token。"
+                f"播放结束时，这个 rank 的读取位置是 {job['cursor_tokens']} 个 token。{pack}"
+            ),
+            (
+                f"Data-parallel rank r reads samples where sample_index % dp == r, "
+                f"{job['tokens_per_rank_step']} tokens per step. "
+                f"At the end of playback that rank's cursor is {job['cursor_tokens']} tokens. {pack}"
+            ),
+        ),
+    }, {
+        "id": "recipe",
+        "level": "info",
+        "title": t(lang, "配方", "Recipe"),
+        "body": t(
+            lang,
+            (
+                f"学习率日程是{_schedule_name(cfg.lr_schedule, lang)}，梯度裁剪 {cfg.grad_clip:g}，权重衰减 {cfg.weight_decay:g}。"
+                + (
+                    "FP16 从损失缩放 65536 开始，溢出时减半并跳过这一步的权重更新。"
+                    if cfg.precision == "fp16"
+                    else "BF16 不使用损失缩放。梯度裁剪和权重衰减不改变这条教学损失曲线。"
+                )
+            ),
+            (
+                f"The learning-rate schedule is {_schedule_name(cfg.lr_schedule, lang)}, "
+                f"gradient clipping is {cfg.grad_clip:g}, and weight decay is {cfg.weight_decay:g}. "
+                + (
+                    "FP16 starts at a loss scale of 65536. An overflow halves it and skips the weight update for that step."
+                    if cfg.precision == "fp16"
+                    else "BF16 does not use loss scaling. Clipping and weight decay do not change this teaching loss curve."
+                )
+            ),
+        ),
+    }]
+    band = job["mfu_band"]
+    if band == "low":
+        band_body = t(
+            lang,
+            f"模型 FLOPs 利用率 {timing['mfu'] * 100:.1f}%，低于教学上的 25%。优先看数据和通信，而不是再改效率系数。",
+            f"Model FLOPs utilization is {timing['mfu'] * 100:.1f}%, below the teaching line of 25%. Look at data and communication before touching the efficiency factor.",
+        )
+    elif band == "high":
+        band_body = t(
+            lang,
+            f"模型 FLOPs 利用率 {timing['mfu'] * 100:.1f}%，高于教学上的 55%。效率系数可能偏乐观。",
+            f"Model FLOPs utilization is {timing['mfu'] * 100:.1f}%, above the teaching line of 55%. The efficiency factor may be optimistic.",
+        )
+    else:
+        band_body = t(
+            lang,
+            f"模型 FLOPs 利用率 {timing['mfu'] * 100:.1f}%，落在教学上 25% 到 55% 的常见区间。",
+            f"Model FLOPs utilization is {timing['mfu'] * 100:.1f}%, inside the teaching band of 25% to 55%.",
+        )
+    notes.append({
+        "id": "mfu-band",
+        "level": "warn" if band == "low" else "info",
+        "title": t(lang, "利用率区间", "Utilization band"),
+        "body": band_body,
+    })
+    gb = job["checkpoint"]["ckpt_bytes"] / GIB
+    notes.append({
+        "id": "checkpoint-bill",
+        "level": "info",
+        "title": t(lang, "检查点内容", "Checkpoint contents"),
+        "body": t(
+            lang,
+            (
+                f"每个 rank 保存参数、优化器状态、随机数和数据读到哪，约 {gb:.2f} GB。"
+                f"按 2 GB/s 的教学磁盘带宽，一次保存约 {job['checkpoint']['ckpt_ms']:.0f} ms。"
+                "这段时间不写进预览步时。"
+            ),
+            (
+                f"Each rank saves parameters, optimizer state, the RNG, and the data cursor, about {gb:.2f} GB. "
+                f"At a teaching disk rate of 2 GB/s, one save is about {job['checkpoint']['ckpt_ms']:.0f} ms. "
+                "That time is not part of the preview step."
+            ),
+        ),
+    })
+    return notes
+
+
+def _duration(seconds: float, lang: str) -> str:
+    if seconds >= 86400:
+        return t(lang, f"{seconds / 86400:.1f} 天", f"{seconds / 86400:.1f} days")
+    if seconds >= 3600:
+        return t(lang, f"{seconds / 3600:.1f} 小时", f"{seconds / 3600:.1f} hours")
+    if seconds >= 60:
+        return t(lang, f"{seconds / 60:.1f} 分钟", f"{seconds / 60:.1f} minutes")
+    return t(lang, f"{seconds:.0f} 秒", f"{seconds:.0f} seconds")
+
+
+def _job_startup_lines(plan: dict) -> list[tuple[str, str]]:
+    lang = norm_lang(plan.get("lang"))
+    tag = sim(lang)
+    job = plan.get("job") or _empty_job()
+    lines: list[tuple[str, str]] = []
+    if job["corpus_tokens"]:
+        lines.append(("info", t(
+            lang,
+            (
+                f"{tag} 语料 {job['dataset_name']}，共 {job['corpus_tokens']:.3e} token，"
+                f"整次 {job['full_steps']} 步，墙钟 {_duration(job['full_wall_s'], lang)}，"
+                f"GPU 时 {job['gpu_hours']:.2f}。这次播放只覆盖前 {job['playback_steps']} 步。"
+            ),
+            (
+                f"{tag} Corpus {job['dataset_name']}, {job['corpus_tokens']:.3e} tokens, "
+                f"{job['full_steps']} steps for the full job, wall time {_duration(job['full_wall_s'], lang)}, "
+                f"{job['gpu_hours']:.2f} GPU-hours. This playback covers the first {job['playback_steps']} steps."
+            ),
+        )))
+    ratio = job["effective_token_ratio"]
+    lines.append(("info", t(
+        lang,
+        (
+            f"{tag} 数据按 sample_index % dp 分片。每步全局 {job['tokens_per_step']} token，"
+            f"每个数据并行 rank {job['tokens_per_rank_step']} token。"
+            f"序列{'拼接' if job['pack_sequences'] else '不拼接'}，有效 token 比例 {ratio:.1f}。"
+        ),
+        (
+            f"{tag} Data is sharded by sample_index % dp. {job['tokens_per_step']} global tokens per step, "
+            f"{job['tokens_per_rank_step']} per data-parallel rank. "
+            f"Sequences are {'packed' if job['pack_sequences'] else 'not packed'}; "
+            f"the effective-token ratio is {ratio:.1f}."
+        ),
+    )))
+    lines.append(("info", t(
+        lang,
+        (
+            f"{tag} 配方：{_schedule_name(job['lr_schedule'], lang)}，"
+            f"梯度裁剪 {job['grad_clip']:g}，权重衰减 {job['weight_decay']:g}。"
+        ),
+        (
+            f"{tag} Recipe: {_schedule_name(job['lr_schedule'], lang)}, "
+            f"gradient clip {job['grad_clip']:g}, weight decay {job['weight_decay']:g}."
+        ),
+    )))
+    if job["resume_step"] > 0:
+        lines.append(("info", t(
+            lang,
+            (
+                f"{tag} 从第 {job['resume_step']} 步恢复：参数、优化器状态、随机数和数据位置已经读回。"
+                f"当前数据位置约 {job['resume_step'] * job['tokens_per_rank_step']} token。"
+            ),
+            (
+                f"{tag} Resuming at step {job['resume_step']}: parameters, optimizer state, "
+                f"the RNG, and the data cursor are restored. "
+                f"The data cursor is about {job['resume_step'] * job['tokens_per_rank_step']} tokens."
+            ),
+        )))
+    return lines
+
+
+def _checkpoint_save_line(plan: dict) -> str:
+    lang = norm_lang(plan.get("lang"))
+    ckpt = plan["job"]["checkpoint"]
+    gb = ckpt["ckpt_bytes"] / GIB
+    return t(
+        lang,
+        (
+            f"{sim(lang)}[checkpoint] 本卡写出 {gb:.2f} GB，包含参数、优化器状态、随机数和数据位置。"
+            f"按 2 GB/s 估算耗时 {ckpt['ckpt_ms']:.0f} ms。"
+        ),
+        (
+            f"{sim(lang)}[checkpoint] This GPU writes {gb:.2f} GB: parameters, optimizer state, "
+            f"the RNG, and the data cursor. At 2 GB/s that is about {ckpt['ckpt_ms']:.0f} ms."
+        ),
+    )
+
+
+def _overflow_line(plan: dict, loss_scale: int) -> str:
+    lang = norm_lang(plan.get("lang"))
+    nxt = loss_scale // 2
+    return t(
+        lang,
+        f"{sim(lang)}[fp16] 梯度溢出，损失缩放从 {loss_scale} 减半到 {nxt}。这一步不更新权重。",
+        f"{sim(lang)}[fp16] Gradients overflowed. Loss scale halves from {loss_scale} to {nxt}. This step does not update weights.",
+    )
+
+
+def _timeout_line(plan: dict, node: dict, rank: int, step: int) -> str:
+    lang = norm_lang(plan.get("lang"))
+    collective = plan["job"]["collective"]
+    return t(
+        lang,
+        (
+            f"{sim(lang)}[node{node['id']} rank{rank}] 集合通信 {collective} 超时。"
+            f"停在第 {step} 步，其后的 rank 不再前进。"
+        ),
+        (
+            f"{sim(lang)}[node{node['id']} rank{rank}] Collective {collective} timed out. "
+            f"Stopped on step {step}. Later ranks do not advance."
+        ),
+    )
+
+
+def _eval_line(plan: dict, eval_loss: float, on_interval: bool) -> str:
+    lang = norm_lang(plan.get("lang"))
+    if not on_interval:
+        return t(
+            lang,
+            f"[模拟][eval] 验证损失 {eval_loss:.3f}。这是教学曲线，不是某个数据集上的成绩。",
+            f"[sim][eval] Validation loss {eval_loss:.3f}. This is a teaching curve, not a score on a dataset.",
+        )
+    seconds = plan["job"]["eval_s"]
+    return t(
+        lang,
+        (
+            f"[模拟][eval] 验证损失 {eval_loss:.3f}。这次验证按教学估算另占 {_duration(seconds, lang)}，"
+            "不计入训练步时。这是教学曲线，不是某个数据集上的成绩。"
+        ),
+        (
+            f"[sim][eval] Validation loss {eval_loss:.3f}. This eval takes about {_duration(seconds, lang)} "
+            "in the teaching estimate and is not part of the training step. "
+            "This is a teaching curve, not a score on a dataset."
+        ),
+    )
+
+
 def _input_errors(cfg: TrainConfig, lang: str = "zh") -> tuple[list[str], list[str]]:
     errors: list[str] = []
     if cfg.gpu not in GPUS:
@@ -721,6 +1154,27 @@ def _input_errors(cfg: TrainConfig, lang: str = "zh") -> tuple[list[str], list[s
         errors.append(t(lang, "学习率需要大于 0 且不超过 1。", "Learning rate must be greater than 0 and at most 1."))
     if not 1 <= cfg.speed <= 8:
         errors.append(t(lang, "播放速度需要在 1 到 8 之间。", "Playback speed must be from 1 to 8."))
+    if cfg.dataset not in DATASETS:
+        errors.append(t(lang, f"未知语料：{cfg.dataset}", f"Unknown corpus: {cfg.dataset}"))
+    if cfg.lr_schedule not in ("warmup_constant", "warmup_cosine"):
+        errors.append(t(lang, f"未知学习率日程：{cfg.lr_schedule}", f"Unknown learning-rate schedule: {cfg.lr_schedule}"))
+    if cfg.fault not in ("none", "nccl_timeout"):
+        errors.append(t(lang, f"未知故障：{cfg.fault}", f"Unknown fault: {cfg.fault}"))
+    if not 0 <= cfg.weight_decay <= 1:
+        errors.append(t(lang, "权重衰减需要在 0 到 1 之间。", "Weight decay must be from 0 to 1."))
+    if not 0 <= cfg.grad_clip <= 100:
+        errors.append(t(lang, "梯度裁剪需要在 0 到 100 之间。", "Gradient clipping must be from 0 to 100."))
+    for name, value in (
+        ("检查点间隔", cfg.ckpt_every_steps),
+        ("续训起始步", cfg.resume_step),
+        ("验证间隔", cfg.eval_every_steps),
+    ):
+        if not 0 <= value <= 1_000_000:
+            errors.append(t(
+                lang,
+                f"{name}需要在 0 到 1000000 之间。",
+                "Checkpoint interval, resume step, and eval interval must be from 0 to 1000000.",
+            ))
     return errors, []
 
 
@@ -745,6 +1199,8 @@ def _skeleton(errors: list[str], warnings: list[str], lang: str = "zh") -> dict:
         "errors": errors,
         "warnings": warnings,
         "notes": [],
+        "advice": [],
+        "job": _empty_job(),
         "cluster": {"nodes": []},
         "memory": {
             "param_gb": 0.0,
