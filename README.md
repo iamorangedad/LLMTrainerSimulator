@@ -15,11 +15,11 @@
 
 ## 运行
 
-需要 Python 3.10，以及 `requirements.txt` 里的 FastAPI 和 Uvicorn。
+需要 Python 3.10 和 [uv](https://docs.astral.sh/uv/)。依赖写在 `pyproject.toml`，锁定版本在 `uv.lock`。
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7860
+uv sync
+uv run uvicorn app.main:app --host 0.0.0.0 --port 7860
 ```
 
 在浏览器打开 <http://127.0.0.1:7860>。
@@ -27,7 +27,7 @@ python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7860
 ## 测试
 
 ```bash
-python3 -m unittest tests.test_plan -v
+uv run python -m unittest tests.test_plan -v
 ```
 
 ## 文档
