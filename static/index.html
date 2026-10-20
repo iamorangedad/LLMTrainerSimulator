@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>训练模拟台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="stylesheet" href="/static/styles.css?v=6">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -117,6 +117,60 @@
         <span data-i18n="activationCkpt">激活重计算</span>
       </label>
 
+      <h2 data-i18n="hData">数据</h2>
+      <label class="field">
+        <span data-i18n="dataset">语料</span>
+        <select id="dataset"></select>
+      </label>
+      <label class="check">
+        <input id="packSequences" type="checkbox" checked>
+        <span data-i18n="pack">序列拼接</span>
+      </label>
+
+      <h2 data-i18n="hRecipe">配方</h2>
+      <label class="field">
+        <span data-i18n="schedule">学习率日程</span>
+        <select id="lrSchedule">
+          <option value="warmup_constant" data-i18n="schedConstant">先升温再保持</option>
+          <option value="warmup_cosine" data-i18n="schedCosine">先升温再余弦衰减</option>
+        </select>
+      </label>
+      <div class="grid-2">
+        <label class="field">
+          <span data-i18n="gradClip">梯度裁剪</span>
+          <input id="gradClip" type="number" min="0" max="100" step="any" value="1">
+        </label>
+        <label class="field">
+          <span data-i18n="weightDecay">权重衰减</span>
+          <input id="weightDecay" type="number" min="0" max="1" step="any" value="0.1">
+        </label>
+      </div>
+
+      <h2 data-i18n="hJob">作业</h2>
+      <div class="grid-2">
+        <label class="field">
+          <span data-i18n="ckptEvery">检查点间隔</span>
+          <input id="ckptEvery" type="number" min="0" max="1000000" value="0">
+        </label>
+        <label class="field">
+          <span data-i18n="resumeStep">续训起始步</span>
+          <input id="resumeStep" type="number" min="0" max="1000000" value="0">
+        </label>
+      </div>
+      <div class="grid-2">
+        <label class="field">
+          <span data-i18n="evalEvery">验证间隔</span>
+          <input id="evalEvery" type="number" min="0" max="1000000" value="0">
+        </label>
+        <label class="field">
+          <span data-i18n="fault">故障</span>
+          <select id="fault">
+            <option value="none" data-i18n="faultNone">无</option>
+            <option value="nccl_timeout" data-i18n="faultTimeout">集合通信超时</option>
+          </select>
+        </label>
+      </div>
+
       <h2 data-i18n="hPlay">播放</h2>
       <div class="grid-2">
         <label class="field">
@@ -186,8 +240,16 @@
         <div><dt data-i18n="statSpeedup">加速比</dt><dd id="speedup">—</dd></div>
       </dl>
       <p id="speedupNote" class="hint"></p>
+      <h3 data-i18n="jobTitle">整次作业</h3>
+      <dl class="stats job-stats">
+        <div><dt data-i18n="statTokens">每步 token</dt><dd id="jobTokens">—</dd></div>
+        <div><dt data-i18n="statFullSteps">整次步数</dt><dd id="jobSteps">—</dd></div>
+        <div><dt data-i18n="statWall">墙钟时间</dt><dd id="jobWall">—</dd></div>
+        <div><dt data-i18n="statGpuHours">GPU 时</dt><dd id="jobGpuHours">—</dd></div>
+      </dl>
+      <p id="ckptLine" class="hint"></p>
       <canvas id="lossChart" width="280" height="120" data-i18n-aria="chartAria" aria-label="教学损失曲线"></canvas>
-      <p class="hint chart-caption" data-i18n="chartCaption">横轴是步，纵轴是损失。曲线用于观察下降和跳动，不对应真实数据集。</p>
+      <p class="hint chart-caption" data-i18n="chartCaption">横轴是步，纵轴是损失。曲线用于观察下降和跳动。词表约 32000 时，真实交叉熵的起点约在 10 nat 附近；这条曲线是教学形状，不是这份语料的成绩。</p>
       <div id="notes" class="notes"></div>
       <details class="formulas">
         <summary data-i18n="formulasSummary">估算说明</summary>
@@ -205,6 +267,6 @@
     <div id="log" class="log" role="log"></div>
   </section>
 
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=7"></script>
 </body>
 </html>
