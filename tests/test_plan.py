@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import unittest
 from dataclasses import replace
 
@@ -182,6 +183,90 @@ class LanguageTests(unittest.TestCase):
         self.assertEqual(names["single_small"], "Single-GPU start")
         bad = build_plan(replace(cfg, framework="megatron", tp=5, pp=1, gpus_per_node=5), "en")
         self.assertTrue(any("attention heads" in err.lower() or "Attention heads" in err for err in bad["errors"]))
+
+
+class JobTests(unittest.TestCase):
+    def test_full_job_is_tokens_divided_by_one_step(self):
+        plan = plan_of("token_budget")
+        tokens = plan["batch"]["global_tokens"]
+        self.assertEqual(plan["job"]["full_steps"], math.ceil(1e11 / tokens))
+        step_s = plan["timing"]["step_ms"] / 1000
+        world = plan["parallel"]["world"]
+        self.assertAlmostEqual(plan["job"]["gpu_hours"], world * plan["job"]["full_steps"] * step_s / 3600)
+        self.assertEqual(plan["timing"], plan_of("single_node_shard")["timing"])
+        self.assertEqual(plan["memory"], plan_of("single_node_shard")["memory"])
+
+    def test_packing_and_cosine_do_not_change_the_step(self):
+        base = config_of("single_small")
+        packed = build_plan(replace(base, pack_sequences=True))
+        padded = build_plan(replace(base, pack_sequences=False))
+        cosine = build_plan(replace(base, lr_schedule="warmup_cosine"))
+        self.assertEqual(packed["timing"], padded["timing"])
+        self.assertEqual(packed["memory"], padded["memory"])
+        self.assertEqual(packed["job"]["effective_token_ratio"], 1.0)
+        self.assertEqual(padded["job"]["effective_token_ratio"], 0.7)
+        self.assertEqual(cosine["timing"], packed["timing"])
+        self.assertEqual(cosine["memory"], packed["memory"])
+
+    def test_checkpoint_time_stays_out_of_the_preview_step(self):
+        base = plan_of("single_node_shard")
+        saved = plan_of("resume_job")
+        self.assertEqual(saved["timing"]["step_ms"], base["timing"]["step_ms"])
+        self.assertGreater(saved["job"]["checkpoint"]["ckpt_ms"], 0)
+        self.assertEqual(saved["job"]["resume_step"], 1000)
+        lines = [text for _level, text in startup_lines(saved)]
+        self.assertTrue(any("从第 1000 步恢复" in text for text in lines))
+        self.assertTrue(any("进入训练循环" in text for text in lines))
+
+    def test_tensor_parallel_across_nodes_is_advice(self):
+        cfg = replace(
+            config_of("multi_node_megatron"),
+            nodes=2,
+            gpus_per_node=4,
+            tp=8,
+            pp=1,
+            model="d7b",
+            micro_batch=1,
+            grad_accum=1,
+            seq_len=512,
+        )
+        plan = build_plan(cfg)
+        self.assertEqual(plan["errors"], [])
+        self.assertTrue(any(item["level"] == "warn" and "跨出节点" in item["body"] for item in plan["advice"]))
+
+    def test_old_presets_keep_default_job_fields(self):
+        plan = plan_of("single_small")
+        self.assertIsNone(plan["job"]["full_steps"])
+        self.assertEqual(plan["job"]["lr_schedule"], "warmup_constant")
+        self.assertEqual(plan["job"]["fault"], "none")
+
+
+class JobStreamTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fp16_overflow_skips_the_update(self):
+        cfg = replace(config_of("single_small"), precision="fp16", steps=4, speed=8)
+        texts = []
+        async for event in simulate(cfg):
+            if event["kind"] == "log":
+                texts.append(event["text"])
+        self.assertTrue(any("梯度溢出" in text for text in texts))
+        bf16 = []
+        async for event in simulate(replace(cfg, precision="bf16")):
+            if event["kind"] == "log":
+                bf16.append(event["text"])
+        self.assertFalse(any("梯度溢出" in text for text in bf16))
+
+    async def test_collective_timeout_ends_the_run(self):
+        cfg = replace(config_of("hang_rank"), speed=8)
+        events = []
+        async for event in simulate(cfg):
+            events.append(event)
+        statuses = [event["status"] for event in events if event["kind"] == "status"]
+        self.assertEqual(statuses[-1], "timeout")
+        self.assertNotIn("done", statuses)
+        text = " ".join(event.get("text", "") for event in events)
+        self.assertIn("allreduce", text)
+        self.assertIn("超时", text)
+        self.assertIn("rank", text)
 
 
 if __name__ == "__main__":
