@@ -105,6 +105,29 @@ MODELS = {
     },
 }
 
+DATASETS = {
+    "none": {
+        "name": "不外推整次作业",
+        "name_en": "Do not extrapolate the full job",
+        "tokens": None,
+    },
+    "tok_10b": {
+        "name": "100 亿 token",
+        "name_en": "10 billion tokens",
+        "tokens": 10_000_000_000,
+    },
+    "tok_100b": {
+        "name": "1000 亿 token",
+        "name_en": "100 billion tokens",
+        "tokens": 100_000_000_000,
+    },
+    "tok_1t": {
+        "name": "1 万亿 token",
+        "name_en": "1 trillion tokens",
+        "tokens": 1_000_000_000_000,
+    },
+}
+
 FRAMEWORKS = {
     "ddp": {
         "name": "PyTorch DDP",
@@ -291,6 +314,92 @@ PRESETS = [
             "speed": 4,
         },
     },
+    {
+        "id": "token_budget",
+        "name": "千亿 token 要跑多久",
+        "name_en": "How long 100 billion tokens take",
+        "summary": "4 张 A100 用 FSDP 训练 7B，语料按 1000 亿 token 外推整次作业。播放仍只走十几步。",
+        "summary_en": "Four A100s train a 7B model with FSDP. The corpus is 100 billion tokens, so the plan extrapolates the full job. Playback still covers a dozen steps.",
+        "config": {
+            "nodes": 1,
+            "gpus_per_node": 4,
+            "gpu": "a100_80",
+            "interconnect": "ib_hdr",
+            "framework": "fsdp",
+            "zero_stage": 3,
+            "tp": 1,
+            "pp": 1,
+            "model": "d7b",
+            "micro_batch": 1,
+            "grad_accum": 4,
+            "seq_len": 2048,
+            "precision": "bf16",
+            "activation_checkpointing": True,
+            "cpu_offload": False,
+            "steps": 12,
+            "lr": 1.5e-4,
+            "speed": 2,
+            "dataset": "tok_100b",
+        },
+    },
+    {
+        "id": "resume_job",
+        "name": "从检查点接着训",
+        "name_en": "Resume from a checkpoint",
+        "summary": "同一份 7B 作业从第 1000 步恢复，并按间隔把检查点的磁盘时间算出来。",
+        "summary_en": "The same 7B job resumes at step 1000, and checkpoint disk time is estimated on the save interval.",
+        "config": {
+            "nodes": 1,
+            "gpus_per_node": 4,
+            "gpu": "a100_80",
+            "interconnect": "ib_hdr",
+            "framework": "fsdp",
+            "zero_stage": 3,
+            "tp": 1,
+            "pp": 1,
+            "model": "d7b",
+            "micro_batch": 1,
+            "grad_accum": 4,
+            "seq_len": 2048,
+            "precision": "bf16",
+            "activation_checkpointing": True,
+            "cpu_offload": False,
+            "steps": 12,
+            "lr": 1.5e-4,
+            "speed": 2,
+            "dataset": "tok_100b",
+            "resume_step": 1000,
+            "ckpt_every_steps": 4,
+        },
+    },
+    {
+        "id": "hang_rank",
+        "name": "集合通信超时",
+        "name_en": "Collective timeout",
+        "summary": "两台机器用 10GbE 做数据并行。播放停在一次集合通信超时，日志写出 rank 和步号。",
+        "summary_en": "Two machines do data parallel over 10GbE. Playback stops on a collective timeout and names the rank and the step.",
+        "config": {
+            "nodes": 2,
+            "gpus_per_node": 2,
+            "gpu": "rtx4090",
+            "interconnect": "eth_10",
+            "framework": "ddp",
+            "zero_stage": 2,
+            "tp": 1,
+            "pp": 1,
+            "model": "gpt2",
+            "micro_batch": 4,
+            "grad_accum": 1,
+            "seq_len": 1024,
+            "precision": "bf16",
+            "activation_checkpointing": False,
+            "cpu_offload": False,
+            "steps": 8,
+            "lr": 3e-4,
+            "speed": 2,
+            "fault": "nccl_timeout",
+        },
+    },
 ]
 
 
@@ -340,6 +449,10 @@ def catalog_payload(lang: str = "zh") -> dict:
             for key, value in FRAMEWORKS.items()
         ],
         "precisions": precisions[lang],
+        "datasets": [
+            {"id": key, "name": _pick(value, lang), "tokens": value["tokens"]}
+            for key, value in DATASETS.items()
+        ],
         "presets": [
             {
                 "id": item["id"],
