@@ -27,6 +27,22 @@ const COPY = {
     seq: "序列长度",
     lr: "学习率",
     activationCkpt: "激活重计算",
+    hData: "数据",
+    dataset: "语料",
+    pack: "序列拼接",
+    hRecipe: "配方",
+    schedule: "学习率日程",
+    schedConstant: "先升温再保持",
+    schedCosine: "先升温再余弦衰减",
+    gradClip: "梯度裁剪",
+    weightDecay: "权重衰减",
+    hJob: "作业",
+    ckptEvery: "检查点间隔",
+    resumeStep: "续训起始步",
+    evalEvery: "验证间隔",
+    fault: "故障",
+    faultNone: "无",
+    faultTimeout: "集合通信超时",
     hPlay: "播放",
     steps: "步数",
     speed: "速度",
@@ -40,7 +56,7 @@ const COPY = {
     statMfu: "FLOPs 利用率",
     statStep: "步时",
     statSpeedup: "加速比",
-    chartCaption: "横轴是步，纵轴是损失。曲线用于观察下降和跳动，不对应真实数据集。",
+    chartCaption: "横轴是步，纵轴是损失。曲线用于观察下降和跳动。词表约 32000 时，真实交叉熵的起点约在 10 nat 附近；这条曲线是教学形状，不是这份语料的成绩。",
     chartAria: "教学损失曲线",
     formulasSummary: "估算说明",
     logTitle: "模拟日志",
@@ -54,6 +70,7 @@ const COPY = {
     statusDone: "已完成",
     statusStopped: "已停止",
     statusError: "配置错误",
+    statusTimeout: "通信超时",
     phaseIdle: "尚未开始",
     phaseData: "取数",
     phaseForward: "前向",
@@ -94,6 +111,21 @@ const COPY = {
     oomStep: "分配失败",
     playbackDone: "播放结束",
     notStarted: "未开始",
+    jobTitle: "整次作业",
+    statTokens: "每步 token",
+    statFullSteps: "整次步数",
+    statWall: "墙钟时间",
+    statGpuHours: "GPU 时",
+    notExtrapolated: "未外推",
+    ckptSize: "检查点约 ",
+    ckptTime: "，按 2 GB/s 估算 ",
+    ckptNotInStep: "。未计入预览步时。",
+    ckptInPlayback: "。保存那一步的播放会加上这段时间。",
+    timeoutStep: "通信超时",
+    unitDays: " 天",
+    unitHours: " 小时",
+    unitMinutes: " 分钟",
+    unitSeconds: " 秒",
     chartLoss: "损失",
     chartStep: "步",
     splitConfigW: "调整配置区宽度",
@@ -130,6 +162,22 @@ const COPY = {
     seq: "Sequence length",
     lr: "Learning rate",
     activationCkpt: "Activation recomputation",
+    hData: "Data",
+    dataset: "Corpus",
+    pack: "Pack sequences",
+    hRecipe: "Recipe",
+    schedule: "Learning-rate schedule",
+    schedConstant: "Warmup, then hold",
+    schedCosine: "Warmup, then cosine",
+    gradClip: "Gradient clipping",
+    weightDecay: "Weight decay",
+    hJob: "Job",
+    ckptEvery: "Checkpoint interval",
+    resumeStep: "Resume step",
+    evalEvery: "Eval interval",
+    fault: "Fault",
+    faultNone: "None",
+    faultTimeout: "Collective timeout",
     hPlay: "Playback",
     steps: "Steps",
     speed: "Speed",
@@ -143,7 +191,7 @@ const COPY = {
     statMfu: "FLOPs utilization",
     statStep: "Step time",
     statSpeedup: "Speedup",
-    chartCaption: "The horizontal axis is the step, the vertical axis is loss. The curve shows the drop and the jumps. It is not a real dataset.",
+    chartCaption: "The horizontal axis is the step and the vertical axis is loss. The curve shows the drop and the jumps. With a vocabulary of about 32000, real cross-entropy starts near 10 nats. This curve is a teaching shape, not a score on this corpus.",
     chartAria: "Teaching loss curve",
     formulasSummary: "How the estimate is made",
     logTitle: "Simulated log",
@@ -157,6 +205,7 @@ const COPY = {
     statusDone: "Finished",
     statusStopped: "Stopped",
     statusError: "Bad config",
+    statusTimeout: "Timed out",
     phaseIdle: "Not started",
     phaseData: "Data",
     phaseForward: "Forward",
@@ -197,6 +246,21 @@ const COPY = {
     oomStep: "Allocation failed",
     playbackDone: "Playback finished",
     notStarted: "Not started",
+    jobTitle: "Full job",
+    statTokens: "Tokens per step",
+    statFullSteps: "Full-job steps",
+    statWall: "Wall time",
+    statGpuHours: "GPU-hours",
+    notExtrapolated: "Not extrapolated",
+    ckptSize: "Checkpoint about ",
+    ckptTime: ", about ",
+    ckptNotInStep: " at 2 GB/s. Not included in the preview step.",
+    ckptInPlayback: " at 2 GB/s. A save step in playback adds this time.",
+    timeoutStep: "Timed out",
+    unitDays: " d",
+    unitHours: " h",
+    unitMinutes: " min",
+    unitSeconds: " s",
     chartLoss: "Loss",
     chartStep: "Step",
     splitConfigW: "Resize the config pane",
@@ -215,6 +279,7 @@ const STATUS_KEY = {
   done: "statusDone",
   stopped: "statusStopped",
   error: "statusError",
+  timeout: "statusTimeout",
 };
 
 const PHASE_KEY = {
@@ -283,6 +348,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     fillSelect($("framework"), catalog.frameworks);
     fillSelect($("model"), catalog.models);
     fillSelect($("precision"), catalog.precisions);
+    fillSelect($("dataset"), catalog.datasets || []);
     fillSelect($("preset"), catalog.presets.map((item) => ({ id: item.id, name: item.name })));
     applyPreset(catalog.presets[0]);
   } catch (error) {
@@ -321,6 +387,15 @@ function applyPreset(preset) {
   $("seqLen").value = cfg.seq_len;
   $("lr").value = cfg.lr;
   $("activationCheckpoint").checked = cfg.activation_checkpointing;
+  $("dataset").value = cfg.dataset || "none";
+  $("packSequences").checked = cfg.pack_sequences !== false;
+  $("lrSchedule").value = cfg.lr_schedule || "warmup_constant";
+  $("gradClip").value = cfg.grad_clip ?? 1;
+  $("weightDecay").value = cfg.weight_decay ?? 0.1;
+  $("ckptEvery").value = cfg.ckpt_every_steps || 0;
+  $("resumeStep").value = cfg.resume_step || 0;
+  $("evalEvery").value = cfg.eval_every_steps || 0;
+  $("fault").value = cfg.fault || "none";
   $("steps").value = cfg.steps;
   $("speed").value = String(cfg.speed);
   syncFramework();
@@ -360,6 +435,15 @@ function gather() {
     precision: $("precision").value,
     activation_checkpointing: $("activationCheckpoint").checked,
     cpu_offload: framework === "deepspeed" ? $("cpuOffload").checked : false,
+    dataset: $("dataset").value || "none",
+    pack_sequences: $("packSequences").checked,
+    lr_schedule: $("lrSchedule").value,
+    weight_decay: Number($("weightDecay").value),
+    grad_clip: Number($("gradClip").value),
+    ckpt_every_steps: intOf("ckptEvery"),
+    resume_step: intOf("resumeStep"),
+    eval_every_steps: intOf("evalEvery"),
+    fault: $("fault").value,
     steps: intOf("steps"),
     lr: Number($("lr").value),
     speed: Number($("speed").value),
@@ -397,9 +481,14 @@ async function preview() {
 }
 
 function configLooksComplete(cfg) {
-  const ints = [cfg.nodes, cfg.gpus_per_node, cfg.zero_stage, cfg.tp, cfg.pp, cfg.micro_batch, cfg.grad_accum, cfg.seq_len, cfg.steps];
+  const ints = [
+    cfg.nodes, cfg.gpus_per_node, cfg.zero_stage, cfg.tp, cfg.pp,
+    cfg.micro_batch, cfg.grad_accum, cfg.seq_len, cfg.steps,
+    cfg.ckpt_every_steps, cfg.resume_step, cfg.eval_every_steps,
+  ];
   if (ints.some((value) => !Number.isInteger(value))) return false;
   if (!Number.isFinite(cfg.lr) || !Number.isFinite(cfg.speed)) return false;
+  if (!Number.isFinite(cfg.weight_decay) || !Number.isFinite(cfg.grad_clip)) return false;
   return true;
 }
 
@@ -440,7 +529,8 @@ function renderPlan(next, fromRun) {
   renderMemory(plan.memory);
   renderTime(plan.timing);
   applyTimingStats(plan.timing);
-  renderNotes(plan.notes);
+  renderJob(plan.job);
+  renderNotes(plan.advice, plan.notes);
   renderFormulas(plan.formulas);
   $("speedupNote").textContent = speedupText(plan.timing);
   if (!fromRun) {
@@ -595,9 +685,32 @@ function applyTimingStats(timing) {
   $("speedup").textContent = timing.speedup.toFixed(2) + "×";
 }
 
-function renderNotes(notes) {
+function renderJob(job) {
+  if (!job) {
+    $("jobTokens").textContent = "—";
+    $("jobSteps").textContent = "—";
+    $("jobWall").textContent = "—";
+    $("jobGpuHours").textContent = "—";
+    $("ckptLine").textContent = "";
+    return;
+  }
+  $("jobTokens").textContent = formatTokens(job.tokens_per_step);
+  $("jobSteps").textContent = job.full_steps ? formatCount(job.full_steps) : tr("notExtrapolated");
+  const wall = job.full_wall_s != null ? job.full_wall_s : job.playback_wall_s;
+  $("jobWall").textContent = formatWall(wall);
+  $("jobGpuHours").textContent = job.gpu_hours != null ? job.gpu_hours.toFixed(1) : tr("notExtrapolated");
+  const ckpt = job.checkpoint || { ckpt_bytes: 0, ckpt_ms: 0, every_steps: 0 };
+  const gb = ckpt.ckpt_bytes / (1024 ** 3);
+  $("ckptLine").textContent =
+    tr("ckptSize") + gb.toFixed(2) + " GB" +
+    tr("ckptTime") + formatMs(ckpt.ckpt_ms) +
+    (ckpt.every_steps > 0 ? tr("ckptInPlayback") : tr("ckptNotInStep"));
+}
+
+function renderNotes(advice, notes) {
   const root = $("notes");
   root.replaceChildren();
+  for (const item of advice || []) appendNote(item);
   for (const note of notes || []) appendNote(note);
 }
 
@@ -787,6 +900,11 @@ function handle(event) {
       stepKind = "error";
       writeStepLabel();
     }
+    if (event.status === "timeout") {
+      stepKind = "timeout";
+      setPhase("fail", tr("timeoutStep"));
+      writeStepLabel();
+    }
     if (event.status === "stopped") stepKind = "stopped";
   }
 }
@@ -795,6 +913,7 @@ function writeStepLabel() {
   if (stepKind === "starting") $("stepLabel").textContent = tr("starting");
   else if (stepKind === "step") $("stepLabel").textContent = tr("stepWord") + stepNums.step + " / " + stepNums.steps;
   else if (stepKind === "oom") $("stepLabel").textContent = tr("oomStep");
+  else if (stepKind === "timeout") $("stepLabel").textContent = tr("timeoutStep");
   else if (stepKind === "done") $("stepLabel").textContent = tr("playbackDone");
   else if (stepKind === "error") $("stepLabel").textContent = tr("notStarted");
   else $("stepLabel").textContent = tr("phaseIdle");
@@ -812,6 +931,32 @@ function lock(on) {
 function formatMs(ms) {
   if (ms >= 1000) return (ms / 1000).toFixed(2) + " s";
   return Math.round(ms) + " ms";
+}
+
+function formatCount(value) {
+  return Math.round(value).toLocaleString(lang === "en" ? "en-US" : "zh-CN");
+}
+
+function formatTokens(value) {
+  const n = Number(value) || 0;
+  if (lang === "zh") {
+    if (n >= 1e12) return (n / 1e12).toFixed(2) + " 万亿";
+    if (n >= 1e8) return (n / 1e8).toFixed(2) + " 亿";
+    if (n >= 1e4) return (n / 1e4).toFixed(1) + " 万";
+    return formatCount(n);
+  }
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + " T";
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + " B";
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + " M";
+  return formatCount(n);
+}
+
+function formatWall(seconds) {
+  const n = Number(seconds) || 0;
+  if (n >= 86400) return (n / 86400).toFixed(1) + tr("unitDays");
+  if (n >= 3600) return (n / 3600).toFixed(1) + tr("unitHours");
+  if (n >= 60) return (n / 60).toFixed(1) + tr("unitMinutes");
+  return Math.round(n) + tr("unitSeconds");
 }
 
 function formatTok(value) {
@@ -937,7 +1082,7 @@ async function setLanguage(next) {
   window.localStorage.setItem("llm-sim-lang", lang);
   applyStatic();
   if (!catalog) return;
-  const selected = ["preset", "gpu", "interconnect", "framework", "model", "precision"]
+  const selected = ["preset", "gpu", "interconnect", "framework", "model", "precision", "dataset"]
     .reduce((acc, id) => { acc[id] = $(id).value; return acc; }, {});
   try {
     const response = await fetch("/api/catalog?lang=" + lang);
@@ -948,6 +1093,7 @@ async function setLanguage(next) {
     fillSelect($("framework"), catalog.frameworks);
     fillSelect($("model"), catalog.models);
     fillSelect($("precision"), catalog.precisions);
+    fillSelect($("dataset"), catalog.datasets || []);
     fillSelect($("preset"), catalog.presets.map((item) => ({ id: item.id, name: item.name })));
     for (const [id, value] of Object.entries(selected)) $(id).value = value;
     const preset = catalog.presets.find((item) => item.id === $("preset").value);
@@ -961,6 +1107,7 @@ async function setLanguage(next) {
   if (plan) {
     renderMemory(plan.memory);
     renderTime(plan.timing);
+    renderJob(plan.job);
     $("speedupNote").textContent = speedupText(plan.timing);
     drawChart(losses);
   }
